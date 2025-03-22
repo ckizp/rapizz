@@ -1,0 +1,16 @@
+<hibernate-configuration>
+    <session-factory>
+        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="hibernate.connection.provider_class">org.hibernate.hikaricp.internal.HikariCPConnectionProvider</property>
+        <property name="hibernate.hikari.maximumPoolSize">10</property>
+
+        <mapping class="fr.rapizz.model.Pizza"/>
+        <mapping class="fr.rapizz.model.Ingredient"/>
+        <mapping class="fr.rapizz.model.Client"/>
+        <mapping class="fr.rapizz.model.DeliveryDriver"/>
+        <mapping class="fr.rapizz.model.Vehicle"/>
+        <mapping class="fr.rapizz.model.Order"/>
+        <mapping class="fr.rapizz.model.OrderPizza"/>
+    </session-factory>
+</hibernate-configuration>
+
