@@ -3,11 +3,13 @@ package fr.rapizz.view.panels;
 import fr.rapizz.model.Pizza;
 import fr.rapizz.service.PizzaService;
 import fr.rapizz.view.theme.AppTheme;
+import org.springframework.stereotype.Component;
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 
+@Component
 public class MenuPanel extends JPanel {
     private final PizzaService pizzaService;
     private List<Pizza> pizzas;
@@ -16,8 +18,9 @@ public class MenuPanel extends JPanel {
     private JScrollPane scrollPane;
     private JLabel titleLabel;
 
-    public MenuPanel() {
-        this.pizzaService = new PizzaService();
+    public MenuPanel(PizzaService pizzaService) {
+        this.pizzaService = pizzaService;
+
         setupPanel();
         createComponents();
         layoutComponents();

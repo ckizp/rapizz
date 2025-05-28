@@ -26,7 +26,7 @@ CREATE TABLE delivery_drivers (
 
 CREATE TABLE vehicles (
   vehicle_id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
-  vehicle_type ENUM('VOITURE', 'MOTO') NOT NULL,
+  vehicle_type ENUM('CAR', 'MOTORCYCLE') NOT NULL,
   license_plate VARCHAR(12) NOT NULL UNIQUE
 );
 
@@ -41,7 +41,7 @@ CREATE TABLE clients (
 );
 
 CREATE TABLE orders (
-  order_id INT AUTO_INCREMENT PRIMARY KEY,
+  order_id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
   client_id INT NOT NULL,
   driver_id INT,
   vehicle_id INT,
@@ -55,7 +55,7 @@ CREATE TABLE orders (
 );
 
 CREATE TABLE order_pizzas (
-  order_item_id INT AUTO_INCREMENT PRIMARY KEY,
+  order_item_id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
   order_id INT NOT NULL,
   pizza_id INT NOT NULL,
   quantity INT NOT NULL DEFAULT 1,

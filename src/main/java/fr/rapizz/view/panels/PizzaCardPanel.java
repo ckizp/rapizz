@@ -85,7 +85,8 @@ public class PizzaCardPanel extends JPanel {
         chipsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         Set<Ingredient> ingredients = pizza.getIngredients();
-        if (ingredients != null && !ingredients.isEmpty()) {
+
+        if (!ingredients.isEmpty()) {
             for (Ingredient ingredient : ingredients) {
                 chipsPanel.add(createIngredientChip(ingredient.getIngredientName()));
             }

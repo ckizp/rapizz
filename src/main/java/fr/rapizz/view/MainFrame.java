@@ -1,9 +1,12 @@
 package fr.rapizz.view;
 
 import fr.rapizz.controller.NavigationController;
+import fr.rapizz.util.ViewFactory;
 import fr.rapizz.view.panels.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -12,117 +15,113 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Main application window
- */
+@Component
+@RequiredArgsConstructor
+@Slf4j
 public class MainFrame extends JFrame {
-    private static final Logger logger = LoggerFactory.getLogger(MainFrame.class);
     private static final String DEFAULT_VIEW = "MENU_PIZZAS";
 
-    private final Map<String, JPanel> viewMap = new HashMap<>();
-    
-    private JPanel contentPanel;
+    private final ViewFactory viewFactory;
+    private final NavigationController navigationController;
+
     private CardLayout cardLayout;
+    private JPanel contentPanel;
+    private final Map<String, JPanel> viewCache = new HashMap<>();
 
-    public MainFrame() {
-        logger.info("Initializing MainFrame...");
+    @PostConstruct
+    public void initialize() {
+        log.info("Initializing MainFrame...");
 
+        setupWindow();
+        initializeComponents();
+        showDefaultView();
+
+        setVisible(true);
+        log.info("MainFrame is now visible");
+    }
+
+    private void setupWindow() {
         setTitle("RaPizz - Gestion des Pizzas");
         setSize(1200, 800);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        // Set application icon
-        try {
-            ImageIcon appIcon = new ImageIcon(Objects.requireNonNull(getClass().getClassLoader().getResource("images/rapizz.png")));
-            setIconImage(appIcon.getImage());
-        } catch (Exception e) {
-            logger.warn("Failed to load application icon", e);
-        }
-
-        initComponents();
-        setVisible(true);
-        logger.info("MainFrame is now visible.");
+        loadApplicationIcon();
     }
 
-    private void initComponents() {
-        // Create navbar
-        NavigationController navController = new NavigationController(this);
-        JPanel navbarPanel = new NavbarPanel(navController);
+    private void loadApplicationIcon() {
+        try {
+            ImageIcon appIcon = new ImageIcon(Objects.requireNonNull(
+                    getClass().getClassLoader().getResource("images/rapizz.png")));
+            setIconImage(appIcon.getImage());
+        } catch (Exception e) {
+            log.warn("Failed to load application icon", e);
+        }
+    }
 
-        // Initialize main content panel
+    private void initializeComponents() {
+        // Configure navigation controller
+        navigationController.setMainFrame(this);
+
+        // Create UI components
+        JPanel navbarPanel = new NavbarPanel(navigationController);
+        JPanel footerPanel = new FooterPanel();
+
+        // Initialize content panel
         cardLayout = new CardLayout();
         contentPanel = new JPanel(cardLayout);
         contentPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-        // Create footer
-        JPanel footerPanel = new FooterPanel();
-
-        getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(navbarPanel, BorderLayout.NORTH);
-        getContentPane().add(contentPanel, BorderLayout.CENTER);
-        getContentPane().add(footerPanel, BorderLayout.SOUTH);
-
-        // Initialize default view
-        JPanel defaultView = addView(DEFAULT_VIEW);
-        if (defaultView != null) {
-            cardLayout.show(contentPanel, DEFAULT_VIEW);
-            logger.info("Default view initialized: {}", DEFAULT_VIEW);
-        } else {
-            logger.error("Failed to initialize default view");
-        }
+        // Main layout
+        setLayout(new BorderLayout());
+        add(navbarPanel, BorderLayout.NORTH);
+        add(contentPanel, BorderLayout.CENTER);
+        add(footerPanel, BorderLayout.SOUTH);
     }
 
-    /**
-     * Shows the specified view, creating it first if necessary
-     */
+    private void showDefaultView() {
+        showView(DEFAULT_VIEW);
+    }
+
     public void showView(String viewName) {
-        logger.info("Request to show view: {}", viewName);
+        log.info("Request to show view: {}", viewName);
 
-        if (!viewMap.containsKey(viewName)) {
-            addView(viewName);
+        // Check if view is supported
+        if (!viewFactory.isViewSupported(viewName)) {
+            log.error("Unsupported view requested: {}", viewName);
+            showErrorView("Vue non supportée: " + viewName);
+            return;
         }
-        
-        if (viewMap.containsKey(viewName)) {
-            logger.debug("Switching to view: {}", viewName);
-            cardLayout.show(contentPanel, viewName);
-            contentPanel.revalidate();
-            contentPanel.repaint();
-        } else {
-            logger.error("Failed to show view: {}", viewName);
-        }
-    }
 
-    /**
-     * Creates a new view, adds it to the content panel and view map
-     * @return The created view panel or null if creation failed
-     */
-    private JPanel addView(String viewName) {
-        JPanel panel = null;
-        
-        try {
-            panel = switch (viewName) {
-                case "MENU_PIZZAS" -> new MenuPanel();
-                case "DELIVERY" -> new DeliveryPanel();
-                case "STATISTICS" -> new StatistiquesPanel();
-                case "CLIENT_MANAGEMENT" -> new ClientManagementPanel();
-                case "DRIVER_MANAGEMENT" -> new DriverManagementPanel();
-                case "VEHICLE_MANAGEMENT" -> new VehicleManagementPanel();
-                default -> {
-                    logger.warn("Unknown view requested: {}", viewName);
-                    yield null;
-                }
-            };
-            
+        // Create view if not cached
+        if (!viewCache.containsKey(viewName)) {
+            JPanel panel = viewFactory.createView(viewName);
             if (panel != null) {
                 contentPanel.add(panel, viewName);
-                viewMap.put(viewName, panel);
-                logger.info("Successfully created view: {}", viewName);
+                viewCache.put(viewName, panel);
+                log.debug("View added to cache: {}", viewName);
+            } else {
+                log.error("Failed to create view: {}", viewName);
+                showErrorView("Erreur lors de la création de la vue: " + viewName);
+                return;
             }
-        } catch (Exception e) {
-            logger.error("Error creating view {}: {}", viewName, e.getMessage(), e);
         }
-        
-        return panel;
+
+        // Display the view
+        cardLayout.show(contentPanel, viewName);
+        contentPanel.revalidate();
+        contentPanel.repaint();
+        log.debug("Switched to view: {}", viewName);
+    }
+
+    private void showErrorView(String errorMessage) {
+        JPanel errorPanel = new JPanel();
+        errorPanel.add(new JLabel(errorMessage));
+
+        String errorViewName = "ERROR_" + System.currentTimeMillis();
+        contentPanel.add(errorPanel, errorViewName);
+        cardLayout.show(contentPanel, errorViewName);
+        contentPanel.revalidate();
+        contentPanel.repaint();
     }
 }

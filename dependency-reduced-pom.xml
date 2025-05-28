@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <parent>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <version>3.4.5</version>
+    <relativePath>pom.xml</relativePath>
+  </parent>
   <modelVersion>4.0.0</modelVersion>
   <groupId>fr.rapizz</groupId>
   <artifactId>rapizz</artifactId>
@@ -13,19 +19,43 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <mainClass>fr.rapizz.Main</mainClass>
+          <classifier>spring-boot</classifier>
+          <excludes>
+            <exclude>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+            </exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+      <plugin>
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.6.0</version>
         <executions>
           <execution>
+            <id>shade-launch4j</id>
             <phase>package</phase>
             <goals>
               <goal>shade</goal>
             </goals>
             <configuration>
+              <finalName>${project.artifactId}-${project.version}</finalName>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
               <transformers>
                 <transformer>
                   <mainClass>fr.rapizz.Main</mainClass>
                 </transformer>
+                <transformer>
+                  <resource>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</resource>
+                </transformer>
+                <transformer>
+                  <resource>META-INF/spring.factories</resource>
+                </transformer>
+                <transformer />
               </transformers>
             </configuration>
           </execution>
@@ -73,6 +103,51 @@
       </plugin>
     </plugins>
   </build>
+  <dependencies>
+    <dependency>
+      <groupId>org.mariadb.jdbc</groupId>
+      <artifactId>mariadb-java-client</artifactId>
+      <version>3.5.2</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.36</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jfree</groupId>
+      <artifactId>jfreechart</artifactId>
+      <version>1.5.5</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <version>3.4.5</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+      <version>3.4.5</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-configuration-processor</artifactId>
+      <version>3.4.5</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+      <version>3.4.5</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
   <properties>
     <maven.compiler.target>21</maven.compiler.target>
     <maven.compiler.source>21</maven.compiler.source>
