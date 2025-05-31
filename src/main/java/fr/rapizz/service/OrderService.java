@@ -3,6 +3,8 @@ package fr.rapizz.service;
 import fr.rapizz.model.Order;
 import fr.rapizz.model.OrderStatus;
 import fr.rapizz.model.OrderPizza;
+import fr.rapizz.model.FreeReason;
+ import fr.rapizz.model.Client;
 import fr.rapizz.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,13 +18,17 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderService {
     private final OrderRepository repository;
+    private final ClientService clientService;
     private static final int DELIVERY_TIME_THRESHOLD_MINUTES = 45;
+    private static final int LOYALTY_THRESHOLD = 10;
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     public List<Order> findAll() {
@@ -96,17 +102,73 @@ public class OrderService {
                 pizza.getPizzaPrice());
         }
 
+        if (order.getClient() != null) {
+            // Calculer le nombre total de pizzas dans la commande
+            int totalPizzas = order.getOrderItems().stream()
+                .mapToInt(OrderPizza::getQuantity)
+                .sum();
+            
+            // Incrémenter le compteur de fidélité du nombre total de pizzas
+            clientService.incrementLoyaltyCounter(order.getClient(), totalPizzas);
+            
+            // Récupérer le client mis à jour pour vérifier le nouveau compteur
+            Client updatedClient = clientService.findById(order.getClient().getClientId()).orElseThrow();
+            
+            // Vérifier si le client a atteint ou dépassé le seuil de fidélité
+            if (updatedClient.getLoyaltyCounter() >= LOYALTY_THRESHOLD) {
+                log.info("Client {} a atteint le seuil de fidélité ({} points)", 
+                    updatedClient.getClientId(), 
+                    updatedClient.getLoyaltyCounter());
+                
+                // Marquer la commande comme gratuite pour fidélité
+                order.setFreeReason(FreeReason.LOYALTY);
+                
+                // Trouver la pizza la moins chère
+                OrderPizza cheapestPizza = order.getOrderItems().stream()
+                    .min((p1, p2) -> p1.getPizzaPrice().compareTo(p2.getPizzaPrice()))
+                    .orElseThrow();
+                
+                // Si la pizza la moins chère a une quantité > 1
+                if (cheapestPizza.getQuantity() > 1) {
+                    // Créer une nouvelle entrée pour la pizza gratuite
+                    OrderPizza freePizza = new OrderPizza();
+                    freePizza.setOrder(order);
+                    freePizza.setPizza(cheapestPizza.getPizza());
+                    freePizza.setPizzaSize(cheapestPizza.getPizzaSize());
+                    freePizza.setQuantity(1);
+                    freePizza.setPizzaPrice(java.math.BigDecimal.ZERO);
+                    freePizza.setIsFree(true);
+                    order.addOrderItem(freePizza);
+                    
+                    // Décrémenter la quantité de la pizza originale
+                    cheapestPizza.setQuantity(cheapestPizza.getQuantity() - 1);
+                } else {
+                    // Si quantité = 1, mettre simplement à jour la pizza existante
+                    cheapestPizza.setPizzaPrice(java.math.BigDecimal.ZERO);
+                    cheapestPizza.setIsFree(true);
+                }
+                
+                // Réinitialiser le compteur de fidélité
+                clientService.resetLoyaltyCounter(updatedClient);
+                
+                log.info("Pizza gratuite : {} (taille: {}, quantité: 1)", 
+                    cheapestPizza.getPizza().getPizzaName(),
+                    cheapestPizza.getPizzaSize());
+            }
+        }
+
         Order savedOrder = repository.save(order);
         
         log.info("Commande sauvegardée avec l'ID {} et {} pizzas", 
             savedOrder.getOrderId(), savedOrder.getOrderItems().size());
         log.info("Détails des pizzas après sauvegarde:");
         for (OrderPizza pizza : savedOrder.getOrderItems()) {
-            log.info("- {} (taille: {}, quantité: {}, prix: {})", 
+            log.info("- {} (taille: {}, quantité: {}, prix: {}, gratuite: {})", 
                 pizza.getPizza().getPizzaName(),
                 pizza.getPizzaSize(),
                 pizza.getQuantity(),
-                pizza.getPizzaPrice());
+                pizza.getPizzaPrice(),
+                pizza.getIsFree());
         }
         
         return savedOrder;
@@ -134,5 +196,48 @@ public class OrderService {
     @Transactional
     public void delete(Integer id) {
         repository.deleteById(id);
+    }
+
+    @Scheduled(fixedRate = 60000) // Vérifie toutes les minutes
+    @Transactional
+    public void checkLateOrders() {
+        log.info("=== Début de la vérification des commandes en retard ===");
+        List<Order> activeOrders = findActiveOrders();
+        log.info("Nombre de commandes actives trouvées : {}", activeOrders.size());
+        
+        for (Order order : activeOrders) {
+            log.debug("Vérification de la commande #{} - Statut: {}, Date: {}, FreeReason: {}", 
+                order.getOrderId(),
+                order.getOrderStatus(),
+                order.getOrderDate(),
+                order.getFreeReason());
+            
+            if (isLateDelivery(order) && order.getFreeReason() != FreeReason.LATE_DELIVERY) {
+                log.info("🚨 Commande #{} en retard - Délai dépassé de {} minutes", 
+                    order.getOrderId(),
+                    Duration.between(order.getOrderDate(), LocalDateTime.now()).toMinutes() - DELIVERY_TIME_THRESHOLD_MINUTES);
+                
+                // Marquer la commande comme remboursée
+                order.setFreeReason(FreeReason.LATE_DELIVERY);
+                repository.save(order);
+                log.info("✅ Commande #{} marquée comme remboursée (LATE_DELIVERY)", order.getOrderId());
+                
+                // Rembourser le client
+                Client client = order.getClient();
+                BigDecimal totalAmount = BigDecimal.valueOf(calculateOrderTotal(order));
+                BigDecimal newAmount = client.getAmount().add(totalAmount).setScale(2, BigDecimal.ROUND_HALF_UP);
+                clientService.updateAmount(client.getClientId(), newAmount);
+                
+                log.info("💰 Client #{} remboursé de {}€ - Nouveau solde: {}€", 
+                    client.getClientId(), 
+                    totalAmount.doubleValue(),
+                    newAmount.doubleValue());
+            } else if (isLateDelivery(order)) {
+                log.debug("Commande #{} en retard mais déjà remboursée (FreeReason: {})", 
+                    order.getOrderId(), 
+                    order.getFreeReason());
+            }
+        }
+        log.info("=== Fin de la vérification des commandes en retard ===");
     }
 } 

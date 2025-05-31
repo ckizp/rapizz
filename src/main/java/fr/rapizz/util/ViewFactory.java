@@ -9,6 +9,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.swing.*;
 import java.util.HashMap;
@@ -24,9 +25,14 @@ public class ViewFactory {
     private final VehicleController vehicleController;
     private final PizzaService pizzaService;
     private final StatisticsService statisticsService;
-    private final OrderService orderService;
-    private final VehicleService vehicleService;
-    private final DeliveryDriverService driverService;
+    @Autowired
+    private OrderService orderService;
+    @Autowired
+    private VehicleService vehicleService;
+    @Autowired
+    private DeliveryDriverService driverService;
+    @Autowired
+    private ClientService clientService;
 
     private final Map<String, Supplier<JPanel>> viewCreators = new HashMap<>();
 
@@ -37,13 +43,14 @@ public class ViewFactory {
         viewCreators.put("MENU_PIZZAS", () -> new MenuPanel(pizzaService));
         viewCreators.put("STATISTICS", () -> new StatisticsPanel(statisticsService));
         viewCreators.put("DELIVERY", () -> {
-            log.info("Création du DeliveryPanel avec OrderService={}, DeliveryDriverService={}, VehicleService={}, ClientController={}, PizzaService={}", 
+            log.info("Création du DeliveryPanel avec OrderService={}, DeliveryDriverService={}, VehicleService={}, ClientController={}, PizzaService={}, ClientService={}", 
                 orderService != null ? "OK" : "NULL",
                 driverService != null ? "OK" : "NULL",
                 vehicleService != null ? "OK" : "NULL",
                 clientController != null ? "OK" : "NULL",
-                pizzaService != null ? "OK" : "NULL");
-            return new DeliveryPanel(orderService, driverService, vehicleService, clientController, pizzaService);
+                pizzaService != null ? "OK" : "NULL",
+                clientService != null ? "OK" : "NULL");
+            return new DeliveryPanel(orderService, driverService, vehicleService, clientController, pizzaService, clientService);
         });
         viewCreators.put("DRIVER_MANAGEMENT", () -> new DriverManagementPanel(driverController));
         viewCreators.put("VEHICLE_MANAGEMENT", () -> new VehicleManagementPanel(vehicleController));

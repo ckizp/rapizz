@@ -161,43 +161,43 @@ INSERT INTO orders (client_id, driver_id, vehicle_id, order_date, order_status, 
 (6, 2, 2, '2025-05-09 20:30:00', 'DELIVERED', 4, 'NOT_FREE'),
 (7, 1, 1, '2025-05-08 19:00:00', 'DELIVERED', 5, 'LOYALTY');
 
-INSERT INTO order_pizzas (order_id, pizza_id, quantity, pizza_size, pizza_price) VALUES
+INSERT INTO order_pizzas (order_id, pizza_id, quantity, pizza_size, pizza_price, is_free) VALUES
 -- Order 1: Margherita (Large) + Pepperoni (Medium)
-(1, 1, 1, 'OGRESSE', 12.75),
-(1, 4, 1, 'HUMAINE', 9.00),
+(1, 1, 1, 'OGRESSE', 12.75, FALSE),
+(1, 4, 1, 'HUMAINE', 9.00, FALSE),
 -- Order 2: Quatre Fromages (Medium)
-(2, 2, 2, 'HUMAINE', 10.50),
+(2, 2, 2, 'HUMAINE', 10.50, FALSE),
 -- Order 3: Végétarienne (Small) + Napolitaine (Medium) + BBQ Chicken (Large)
-(3, 3, 1, 'NAINE', 7.60),
-(3, 7, 1, 'HUMAINE', 9.50),
-(3, 12, 1, 'OGRESSE', 18.75),
+(3, 3, 1, 'NAINE', 7.60, FALSE),
+(3, 7, 1, 'HUMAINE', 9.50, FALSE),
+(3, 12, 1, 'OGRESSE', 18.75, FALSE),
 -- Order 4: Calzone (Medium)
-(4, 6, 2, 'HUMAINE', 11.00),
+(4, 6, 2, 'HUMAINE', 11.00, FALSE),
 -- Order 5: Mexicaine (Large) + Carbonara (Medium)
-(5, 9, 1, 'OGRESSE', 18.00),
-(5, 10, 1, 'HUMAINE', 11.50),
+(5, 9, 1, 'OGRESSE', 18.00, FALSE),
+(5, 10, 1, 'HUMAINE', 11.50, FALSE),
 -- Order 6: Margherita (Medium) - Free for loyalty
-(6, 1, 1, 'HUMAINE', 0.00),
+(6, 1, 1, 'HUMAINE', 8.50, TRUE),
 -- Order 7: Saumon (Large) - Partial discount due to late delivery
-(7, 11, 1, 'OGRESSE', 10.00),
+(7, 11, 1, 'OGRESSE', 10.00, FALSE),
 -- Order 8 (in progress): Quatre Saisons (Medium) + Hawaïenne (Small)
-(8, 8, 1, 'HUMAINE', 11.50),
-(8, 5, 1, 'NAINE', 8.00),
+(8, 8, 1, 'HUMAINE', 11.50, FALSE),
+(8, 5, 1, 'NAINE', 8.00, FALSE),
 -- Order 9 (in progress): BBQ Chicken (Large)
-(9, 12, 2, 'OGRESSE', 18.75),
+(9, 12, 2, 'OGRESSE', 18.75, FALSE),
 -- Order 10 (pending): Pepperoni (Medium) + Carbonara (Medium)
-(10, 4, 1, 'HUMAINE', 9.00),
-(10, 10, 1, 'HUMAINE', 11.50),
+(10, 4, 1, 'HUMAINE', 9.00, FALSE),
+(10, 10, 1, 'HUMAINE', 11.50, FALSE),
 -- Order 11 (pending): Quatre Fromages (Small) + Végétarienne (Small)
-(11, 2, 1, 'NAINE', 8.40),
-(11, 3, 1, 'NAINE', 7.60),
+(11, 2, 1, 'NAINE', 8.40, FALSE),
+(11, 3, 1, 'NAINE', 7.60, FALSE),
 -- Order 12 (canceled): Margherita (Large)
-(12, 1, 1, 'OGRESSE', 12.75),
+(12, 1, 1, 'OGRESSE', 12.75, FALSE),
 -- Order 13: Calzone (Large) + Napolitaine (Medium)
-(13, 6, 1, 'OGRESSE', 16.50),
-(13, 7, 1, 'HUMAINE', 9.50),
+(13, 6, 1, 'OGRESSE', 16.50, FALSE),
+(13, 7, 1, 'HUMAINE', 9.50, FALSE),
 -- Order 14: Saumon (Medium) + Quatre Saisons (Small)
-(14, 11, 1, 'HUMAINE', 13.50),
-(14, 8, 1, 'NAINE', 9.20),
+(14, 11, 1, 'HUMAINE', 13.50, FALSE),
+(14, 8, 1, 'NAINE', 9.20, FALSE),
 -- Order 15: Margherita (Medium) - Free for loyalty
-(15, 1, 1, 'HUMAINE', 0.00);
+(15, 1, 1, 'HUMAINE', 8.50, TRUE);

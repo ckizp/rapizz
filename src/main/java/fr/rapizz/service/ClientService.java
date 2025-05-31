@@ -5,7 +5,11 @@ import fr.rapizz.repository.ClientRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,5 +45,22 @@ public class ClientService {
     @Transactional
     public void deleteById(Integer id) {
         repository.deleteById(id);
+    }
+
+    @Transactional
+    public Client incrementLoyaltyCounter(Client client, int count) {
+        repository.incrementLoyaltyCounter(client.getClientId(), count);
+        return repository.findById(client.getClientId()).orElseThrow();
+    }
+
+    @Transactional
+    public Client resetLoyaltyCounter(Client client) {
+        repository.resetLoyaltyCounter(client.getClientId());
+        return repository.findById(client.getClientId()).orElseThrow();
+    }
+
+    @Transactional
+    public void updateAmount(Integer clientId, BigDecimal newAmount) {
+        repository.updateAmount(clientId, newAmount);
     }
 }

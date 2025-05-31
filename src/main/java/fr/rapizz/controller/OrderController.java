@@ -48,9 +48,9 @@ public class OrderController {
         log.debug("Creating order for client: {}, driver: {}, vehicle: {}", clientId, driverId, vehicleId);
 
         Order order = new Order();
-        // Les autres champs seront initialisés par @PrePersist
+        // Other fields will be initialized by @PrePersist
 
-        // Validation de la commande
+        // Order validation
         List<String> errors = validator.validateEntity(order);
         if (!errors.isEmpty()) {
             return Result.failure(errors);
@@ -60,7 +60,7 @@ public class OrderController {
             Order saved = service.save(order);
             return Result.success(saved);
         } catch (Exception e) {
-            return Result.failure("Erreur lors de la création de la commande: " + e.getMessage());
+            return Result.failure("Error while creating order: " + e.getMessage());
         }
     }
 

@@ -73,4 +73,10 @@ public class OrderPizza {
      */
     @Column(name = "pizza_price", nullable = false, precision = 5, scale = 2)
     private BigDecimal pizzaPrice;
+
+    /**
+     * Indicates if this pizza is free due to loyalty program.
+     */
+    @Column(name = "is_free", nullable = false)
+    private Boolean isFree = false;
 }

@@ -61,6 +61,7 @@ CREATE TABLE order_pizzas (
   quantity INT NOT NULL DEFAULT 1,
   pizza_size ENUM('NAINE', 'HUMAINE', 'OGRESSE') NOT NULL,
   pizza_price DECIMAL(5, 2) NOT NULL,
+  is_free BOOLEAN NOT NULL DEFAULT FALSE,
   FOREIGN KEY (order_id) REFERENCES orders(order_id),
   FOREIGN KEY (pizza_id) REFERENCES pizzas(pizza_id)
 );
