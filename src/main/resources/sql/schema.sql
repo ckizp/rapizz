@@ -21,7 +21,7 @@ CREATE TABLE delivery_drivers (
   driver_id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
   first_name VARCHAR(48) NOT NULL,
   last_name VARCHAR(48) NOT NULL,
-  phone_number VARCHAR(16)
+  phone_number VARCHAR(16) NOT NULL UNIQUE
 );
 
 CREATE TABLE vehicles (

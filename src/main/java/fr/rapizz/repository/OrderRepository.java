@@ -5,12 +5,23 @@ import fr.rapizz.model.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Repository
 public interface OrderRepository extends JpaRepository<Order, Integer> {
+    @Query("SELECT o FROM Order o " +
+           "LEFT JOIN FETCH o.client " +
+           "LEFT JOIN FETCH o.driver " +
+           "LEFT JOIN FETCH o.vehicle " +
+           "LEFT JOIN FETCH o.orderItems oi " +
+           "LEFT JOIN FETCH oi.pizza " +
+           "WHERE o.orderStatus = :status")
+    List<Order> findByOrderStatusWithDetails(@Param("status") OrderStatus status);
+
     @Query("SELECT COUNT(o) FROM Order o WHERE o.orderDate >= :startDate")
     long countOrders(@Param("startDate") LocalDateTime startDate);
 
@@ -37,4 +48,10 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
             "GROUP BY FUNCTION('DATE_FORMAT', o.orderDate, '%Y-%m-%d') " +
             "ORDER BY day")
     List<Object[]> getRevenueByDay(@Param("startDate") LocalDateTime startDate);
+
+    List<Order> findByClient_ClientId(Integer clientId);
+    List<Order> findByDriver_driverId(Integer driverId);
+    List<Order> findByOrderStatus(OrderStatus status);
+    List<Order> findByOrderDateBetween(LocalDateTime start, LocalDateTime end);
+    List<Order> findByClient_ClientIdAndOrderStatus(Integer clientId, OrderStatus status);
 }

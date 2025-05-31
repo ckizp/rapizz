@@ -9,6 +9,8 @@ import lombok.ToString;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Set;
 
 /**
@@ -91,8 +93,8 @@ public class Order {
     /**
      * Pizza items included in this order.
      */
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<OrderPizza> orderItems = new HashSet<>();
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    private List<OrderPizza> orderItems = new ArrayList<>();
 
     /**
      * Adds a pizza item to this order.
@@ -100,8 +102,10 @@ public class Order {
      * @param orderItem The pizza item to add to this order
      */
     public void addOrderItem(OrderPizza orderItem) {
-        orderItems.add(orderItem);
-        orderItem.setOrder(this);
+        if (orderItem != null) {
+            orderItems.add(orderItem);
+            orderItem.setOrder(this);
+        }
     }
 
     /**

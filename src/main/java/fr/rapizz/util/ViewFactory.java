@@ -3,8 +3,7 @@ package fr.rapizz.util;
 import fr.rapizz.controller.ClientController;
 import fr.rapizz.controller.DriverController;
 import fr.rapizz.controller.VehicleController;
-import fr.rapizz.service.PizzaService;
-import fr.rapizz.service.StatisticsService;
+import fr.rapizz.service.*;
 import fr.rapizz.view.panels.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -25,45 +24,111 @@ public class ViewFactory {
     private final VehicleController vehicleController;
     private final PizzaService pizzaService;
     private final StatisticsService statisticsService;
+    private final OrderService orderService;
+    private final VehicleService vehicleService;
+    private final DeliveryDriverService driverService;
 
     private final Map<String, Supplier<JPanel>> viewCreators = new HashMap<>();
 
     @PostConstruct
-    private void initializeViewCreators() {
+    public void initializeViewCreators() {
+        log.info("Initialisation des créateurs de vues");
+
         viewCreators.put("MENU_PIZZAS", () -> new MenuPanel(pizzaService));
-        viewCreators.put("DELIVERY", DeliveryPanel::new);
         viewCreators.put("STATISTICS", () -> new StatisticsPanel(statisticsService));
-        viewCreators.put("CLIENT_MANAGEMENT", () -> new ClientManagementPanel(clientController));
+        viewCreators.put("DELIVERY", () -> {
+            log.info("Création du DeliveryPanel avec OrderService={}, DeliveryDriverService={}, VehicleService={}, ClientController={}, PizzaService={}", 
+                orderService != null ? "OK" : "NULL",
+                driverService != null ? "OK" : "NULL",
+                vehicleService != null ? "OK" : "NULL",
+                clientController != null ? "OK" : "NULL",
+                pizzaService != null ? "OK" : "NULL");
+            return new DeliveryPanel(orderService, driverService, vehicleService, clientController, pizzaService);
+        });
         viewCreators.put("DRIVER_MANAGEMENT", () -> new DriverManagementPanel(driverController));
         viewCreators.put("VEHICLE_MANAGEMENT", () -> new VehicleManagementPanel(vehicleController));
+        viewCreators.put("CLIENT_MANAGEMENT", () -> new ClientManagementPanel(clientController));
+
+        log.info("Créateurs de vues initialisés: {}", viewCreators.keySet());
     }
 
     public JPanel createView(String viewName) {
-        log.debug("Creating view: {}", viewName);
+        log.info("Demande de création de vue: {}", viewName);
+
+        if (viewName == null || viewName.trim().isEmpty()) {
+            log.warn("Nom de vue null ou vide");
+            return createErrorPanel("Nom de vue invalide");
+        }
 
         Supplier<JPanel> creator = viewCreators.get(viewName);
         if (creator == null) {
-            log.warn("Unknown view requested: {}", viewName);
+            log.warn("Vue inconnue demandée: {}", viewName);
             return createErrorPanel("Vue inconnue: " + viewName);
         }
 
         try {
             JPanel panel = creator.get();
-            log.info("Successfully created view: {}", viewName);
+
+            if (panel == null) {
+                log.error("Le créateur a retourné null pour la vue: {}", viewName);
+                return createErrorPanel("Erreur de création de la vue: " + viewName);
+            }
+
+            log.info("Vue créée avec succès: {}", viewName);
+
+            // Assurer la visibilité
+            SwingUtilities.invokeLater(() -> {
+                panel.setVisible(true);
+                panel.revalidate();
+                panel.repaint();
+            });
+
             return panel;
         } catch (Exception e) {
-            log.error("Error creating view {}: {}", viewName, e.getMessage(), e);
-            return createErrorPanel("Erreur lors de la création de la vue: " + viewName);
+            log.error("Erreur lors de la création de la vue {}: {}", viewName, e.getMessage(), e);
+            return createErrorPanel("Erreur lors de la création de la vue: " + viewName +
+                    "\nErreur: " + e.getMessage());
         }
     }
 
     private JPanel createErrorPanel(String message) {
+        log.debug("Création d'un panel d'erreur: {}", message);
+
         JPanel errorPanel = new JPanel();
-        errorPanel.add(new JLabel(message));
+        errorPanel.setBackground(java.awt.Color.WHITE);
+        errorPanel.setLayout(new java.awt.BorderLayout());
+        errorPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        JLabel errorLabel = new JLabel("<html><div style='text-align: center;'>" +
+                message.replace("\n", "<br>") + "</div></html>");
+        errorLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        errorLabel.setForeground(java.awt.Color.RED);
+        errorLabel.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 16));
+
+        errorPanel.add(errorLabel, java.awt.BorderLayout.CENTER);
+
+        // Bouton pour recharger (optionnel)
+        JButton retryButton = new JButton("Réessayer");
+        retryButton.addActionListener(e -> {
+            log.info("Tentative de rechargement demandée");
+            // Vous pouvez ajouter ici une logique de rechargement si nécessaire
+        });
+
+        JPanel buttonPanel = new JPanel(new java.awt.FlowLayout());
+        buttonPanel.setBackground(java.awt.Color.WHITE);
+        buttonPanel.add(retryButton);
+        errorPanel.add(buttonPanel, java.awt.BorderLayout.SOUTH);
+
         return errorPanel;
     }
 
     public boolean isViewSupported(String viewName) {
-        return viewCreators.containsKey(viewName);
+        boolean supported = viewCreators.containsKey(viewName);
+        log.debug("Vue {} supportée: {}", viewName, supported);
+        return supported;
+    }
+
+    public java.util.Set<String> getSupportedViews() {
+        return viewCreators.keySet();
     }
 }

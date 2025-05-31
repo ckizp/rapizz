@@ -41,14 +41,14 @@ public class OrderPizza {
      * The order this item belongs to.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id")
+    @JoinColumn(name = "order_id", nullable = false)
     private Order order;
 
     /**
      * The pizza that was ordered.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "pizza_id")
+    @JoinColumn(name = "pizza_id", nullable = false)
     private Pizza pizza;
 
     /**
