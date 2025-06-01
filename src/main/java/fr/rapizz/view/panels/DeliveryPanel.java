@@ -908,6 +908,10 @@ public class DeliveryPanel extends JPanel {
 
         if (result.isSuccess()) {
             loadOrders();
+
+            if (newStatus == OrderStatus.DELIVERED) {
+                refreshAllClientData();
+            }
         } else {
             showErrorMessage("Erreur lors de la mise à jour du statut: " + String.join("\n", result.getErrors()));
         }

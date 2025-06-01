@@ -61,12 +61,28 @@ public class OrderService {
     }
 
     public double calculateOrderTotal(Order order) {
+        boolean hasLateDeliveryCompensation = order.getOrderItems().stream()
+                .anyMatch(item -> item.getFreeReason() == FreeReason.LATE_DELIVERY);
+
+        if (hasLateDeliveryCompensation) {
+            return 0.0;
+        }
+
         return order.getOrderItems().stream()
                 .mapToDouble(item -> {
-                    if (item.isFree()) {
-                        return 0.0;
+                    BigDecimal unitPrice = item.getPizzaPrice();
+                    int quantity = item.getQuantity();
+
+                    if (item.getFreeReason() == FreeReason.LOYALTY) {
+                        if (quantity > 1) {
+                            BigDecimal remainingTotal = unitPrice.multiply(new BigDecimal(quantity - 1));
+                            return remainingTotal.doubleValue();
+                        } else {
+                            return 0.0;
+                        }
+                    } else {
+                        return unitPrice.doubleValue() * quantity;
                     }
-                    return item.getPizzaPrice().doubleValue() * item.getQuantity();
                 })
                 .sum();
     }
@@ -103,10 +119,9 @@ public class OrderService {
         order.setOrderStatus(newStatus);
 
         if (newStatus == OrderStatus.DELIVERED && oldStatus != OrderStatus.DELIVERED) {
-            order.setDeliveredAt(LocalDateTime.now());
             log.info("Order #{} marked as delivered at {}", orderId, order.getDeliveredAt());
 
-            if (isLateDelivery(order) && !order.hasLateDeliveryCompensation()) {
+            if (isLateDelivery(order)) {
                 log.info("Order #{} was delivered late - applying automatic refund", orderId);
                 processLateDeliveryRefund(order);
             }
@@ -117,43 +132,89 @@ public class OrderService {
 
     @Transactional
     public void processLateDeliveryRefund(Order order) {
-        BigDecimal refundAmount = order.getOrderItems().stream()
-                .filter(item -> item.getFreeReason() == FreeReason.NOT_FREE)
-                .map(item -> item.getPizzaPrice().multiply(new BigDecimal(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal refundAmount = BigDecimal.ZERO;
+
+        Client client = clientService.findById(order.getClient().getClientId())
+                .orElseThrow(() -> new RuntimeException("Client not found"));
+
+        log.info("=== LATE DELIVERY REFUND DEBUG ===");
+        log.info("Client #{} initial balance: {}€, loyalty: {}",
+                client.getClientId(), client.getAmount(), client.getLoyaltyCounter());
+
+        for (OrderPizza orderPizza : order.getOrderItems()) {
+            BigDecimal unitPrice = orderPizza.getPizzaPrice();
+            int quantity = orderPizza.getQuantity();
+
+            log.info("Processing pizza: {} x{}, price: {}€, freeReason: {}",
+                    orderPizza.getPizza().getPizzaName(), quantity, unitPrice, orderPizza.getFreeReason());
+
+            if (orderPizza.getFreeReason() == FreeReason.NOT_FREE) {
+                BigDecimal pizzaRefund = unitPrice.multiply(new BigDecimal(quantity));
+                refundAmount = refundAmount.add(pizzaRefund);
+                log.info("NOT_FREE pizza refund: {}€", pizzaRefund);
+            } else if (orderPizza.getFreeReason() == FreeReason.LOYALTY) {
+                if (quantity > 1) {
+                    BigDecimal paidAmount = unitPrice.multiply(new BigDecimal(quantity - 1));
+                    refundAmount = refundAmount.add(paidAmount);
+                    log.info("LOYALTY pizza refund (paid portion): {}€", paidAmount);
+                } else {
+                    log.info("LOYALTY pizza fully free, no money refund");
+                }
+            }
+        }
+
+        int loyaltyPointsToRefund = 0;
+        for (OrderPizza orderPizza : order.getOrderItems()) {
+            if (orderPizza.getFreeReason() == FreeReason.LOYALTY) {
+                loyaltyPointsToRefund += 10;
+            }
+        }
+
+        log.info("Total money refund calculated: {}€", refundAmount);
+        log.info("Total loyalty points to refund: {}", loyaltyPointsToRefund);
 
         if (refundAmount.compareTo(BigDecimal.ZERO) > 0) {
             for (OrderPizza orderPizza : order.getOrderItems()) {
-                if (orderPizza.getFreeReason() == FreeReason.NOT_FREE) {
-                    orderPizza.setFreeReason(FreeReason.LATE_DELIVERY);
-                    log.info("Pizza #{} marked as late delivery compensation: {} ({})",
-                            orderPizza.getOrderItemId(),
-                            orderPizza.getPizza().getPizzaName(),
-                            orderPizza.getPizzaSize().getDisplayName());
-                }
+                orderPizza.setFreeReason(FreeReason.LATE_DELIVERY);
             }
 
-            Client client = order.getClient();
-            BigDecimal newAmount = client.getAmount().add(refundAmount);
+            BigDecimal currentBalance = client.getAmount();
+            BigDecimal newAmount = currentBalance.add(refundAmount);
+
+            log.info("Refunding money: current={}€ + refund={}€ = new={}€",
+                    currentBalance, refundAmount, newAmount);
+
             clientService.updateAmount(client.getClientId(), newAmount);
+
+            Client verificationClient = clientService.findById(client.getClientId()).orElse(null);
+            if (verificationClient != null) {
+                log.info("Client balance after update in DB: {}€", verificationClient.getAmount());
+
+                if (verificationClient.getAmount().compareTo(newAmount) != 0) {
+                    log.error("Balance update failed! Expected: {}€, Actual: {}€",
+                            newAmount, verificationClient.getAmount());
+
+                    verificationClient.setAmount(newAmount);
+                    clientService.save(verificationClient);
+
+                    Client finalCheck = clientService.findById(client.getClientId()).orElse(null);
+                    if (finalCheck != null) {
+                        log.info("Final balance check: {}€", finalCheck.getAmount());
+                    }
+                }
+            }
 
             log.info("Client #{} refunded {}€ for late delivery. New balance: {}€",
                     client.getClientId(), refundAmount.doubleValue(), newAmount.doubleValue());
         }
-    }
 
-    @Scheduled(fixedRate = 60000)
-    @Transactional
-    public void checkForLateDeliveries() {
-        List<Order> inProgressOrders = findByStatus(OrderStatus.IN_PROGRESS);
+        if (loyaltyPointsToRefund > 0) {
+            int currentPoints = client.getLoyaltyCounter();
+            int newPoints = currentPoints + loyaltyPointsToRefund;
+            clientService.updateLoyaltyCounter(client.getClientId(), newPoints);
 
-        for (Order order : inProgressOrders) {
-            if (isLateDelivery(order) && !order.hasLateDeliveryCompensation()) {
-                log.info("Order #{} is late and not yet compensated - processing automatic refund", order.getOrderId());
-                processLateDeliveryRefund(order);
-
-                repository.save(order);
-            }
+            log.info("Client #{} refunded {} loyalty points for late delivery. Points: {} -> {}",
+                    client.getClientId(), loyaltyPointsToRefund, currentPoints, newPoints);
         }
     }
 } 

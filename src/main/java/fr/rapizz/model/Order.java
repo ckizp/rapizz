@@ -95,21 +95,13 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<OrderPizza> orderItems = new ArrayList<>();
 
-    public boolean hasFreePizzas() {
-        return orderItems.stream().anyMatch(OrderPizza::isFree);
-    }
+    public void setOrderStatus(OrderStatus orderStatus) {
+        this.orderStatus = orderStatus;
 
-    public List<OrderPizza> getFreePizzas() {
-        return orderItems.stream()
-                .filter(OrderPizza::isFree)
-                .collect(Collectors.toList());
+        if (orderStatus == OrderStatus.DELIVERED && this.deliveredAt == null) {
+            this.deliveredAt = LocalDateTime.now();
+        }
     }
-
-    public boolean hasLateDeliveryCompensation() {
-        return orderItems.stream()
-                .anyMatch(item -> item.getFreeReason() == FreeReason.LATE_DELIVERY);
-    }
-
     /**
      * Adds a pizza item to this order.
      *
