@@ -1,5 +1,6 @@
 package fr.rapizz.view.panels;
 
+import fr.rapizz.controller.MenuController;
 import fr.rapizz.model.Pizza;
 import fr.rapizz.service.PizzaService;
 import fr.rapizz.view.theme.AppTheme;
@@ -11,15 +12,15 @@ import java.util.List;
 
 @Component
 public class MenuPanel extends JPanel {
-    private final PizzaService pizzaService;
+    private final MenuController menuController;
     private List<Pizza> pizzas;
 
     private JPanel cardsContainer;
     private JScrollPane scrollPane;
     private JLabel titleLabel;
 
-    public MenuPanel(PizzaService pizzaService) {
-        this.pizzaService = pizzaService;
+    public MenuPanel(MenuController menuController) {
+        this.menuController = menuController;
 
         setupPanel();
         createComponents();
@@ -58,8 +59,8 @@ public class MenuPanel extends JPanel {
         // Clear existing cards
         cardsContainer.removeAll();
 
-        // Load pizzas from service
-        pizzas = pizzaService.findAll();
+        // Load pizzas from controller
+        pizzas = menuController.getAllPizzas();
 
         if (pizzas == null || pizzas.isEmpty()) {
             JLabel emptyLabel = new JLabel("Aucune pizza disponible", SwingConstants.CENTER);
@@ -80,7 +81,7 @@ public class MenuPanel extends JPanel {
         int columns = determineColumnCount();
 
         for (Pizza pizza : pizzas) {
-            PizzaCardPanel card = new PizzaCardPanel(pizza, pizzaService);
+            PizzaCardPanel card = new PizzaCardPanel(pizza, menuController);
 
             // Set grid position
             gbc.gridx = count % columns;

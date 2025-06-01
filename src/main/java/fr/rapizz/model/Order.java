@@ -12,13 +12,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Entity representing a pizza order.
  *
  * <p>Mapped to the {@code orders} table in the database. Stores metadata
  * about the order such as creation timestamp, status, delivery details,
- * client feedback, and any reason for a free order.</p>
+ * and client feedback.</p>
  *
  * <p>Primary key: {@code order_id} (INT NOT NULL AUTO_INCREMENT).</p>
  *
@@ -29,7 +30,6 @@ import java.util.Set;
  *   <li><b>order_date</b>: DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP</li>
  *   <li><b>order_status</b>: ENUM('PENDING', 'IN_PROGRESS', 'DELIVERED', 'CANCELED') NOT NULL DEFAULT 'PENDING' — defined by {@link OrderStatus}</li>
  *   <li><b>client_rating</b>: TINYINT DEFAULT NULL CHECK (client_rating BETWEEN 0 AND 5)</li>
- *   <li><b>free_reason</b>: ENUM('NOT_FREE', 'LOYALTY', 'LATE_DELIVERY') NOT NULL DEFAULT 'NOT_FREE' — defined by {@link FreeReason}</li>
  * </ul>
  *
  * <p>One-to-many relation with {@link OrderPizza} for the pizzas included in the order.
@@ -68,6 +68,13 @@ public class Order {
     private LocalDateTime orderDate = LocalDateTime.now();
 
     /**
+     * Timestamp when the order was actually delivered.
+     * Set when the order status changes to DELIVERED.
+     */
+    @Column(name = "delivery_at")
+    private LocalDateTime deliveredAt;
+
+    /**
      * Current status of the order in its lifecycle.
      * @see OrderStatus
      */
@@ -83,18 +90,25 @@ public class Order {
     private Integer clientRating;
 
     /**
-     * Tracks the reason if an order is provided for free.
-     * @see FreeReason
-     */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "free_reason", nullable = false)
-    private FreeReason freeReason = FreeReason.NOT_FREE;
-
-    /**
      * Pizza items included in this order.
      */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<OrderPizza> orderItems = new ArrayList<>();
+
+    public boolean hasFreePizzas() {
+        return orderItems.stream().anyMatch(OrderPizza::isFree);
+    }
+
+    public List<OrderPizza> getFreePizzas() {
+        return orderItems.stream()
+                .filter(OrderPizza::isFree)
+                .collect(Collectors.toList());
+    }
+
+    public boolean hasLateDeliveryCompensation() {
+        return orderItems.stream()
+                .anyMatch(item -> item.getFreeReason() == FreeReason.LATE_DELIVERY);
+    }
 
     /**
      * Adds a pizza item to this order.

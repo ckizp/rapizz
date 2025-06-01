@@ -38,8 +38,8 @@ public class ClientController {
                 .toList();
     }
 
-    public Optional<Client> getClientById(Integer id) {
-        return service.findById(id);
+    public Optional<Client> getClientById(Integer clientId) {
+        return service.findById(clientId);
     }
 
     public Result<Client> createClient(String firstName, String lastName,

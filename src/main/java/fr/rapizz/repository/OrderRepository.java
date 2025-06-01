@@ -22,6 +22,23 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
            "WHERE o.orderStatus = :status")
     List<Order> findByOrderStatusWithDetails(@Param("status") OrderStatus status);
 
+    @Query("SELECT o FROM Order o " +
+            "LEFT JOIN FETCH o.client " +
+            "LEFT JOIN FETCH o.driver " +
+            "LEFT JOIN FETCH o.vehicle " +
+            "LEFT JOIN FETCH o.orderItems oi " +
+            "LEFT JOIN FETCH oi.pizza")
+    List<Order> findAllWithDetails();
+
+    @Query("SELECT o FROM Order o " +
+            "LEFT JOIN FETCH o.client " +
+            "LEFT JOIN FETCH o.driver " +
+            "LEFT JOIN FETCH o.vehicle " +
+            "LEFT JOIN FETCH o.orderItems oi " +
+            "LEFT JOIN FETCH oi.pizza " +
+            "WHERE o.orderStatus IN ('PENDING', 'IN_PROGRESS')")
+    List<Order> findActiveOrdersWithDetails();
+
     @Query("SELECT COUNT(o) FROM Order o WHERE o.orderDate >= :startDate")
     long countOrders(@Param("startDate") LocalDateTime startDate);
 
@@ -48,10 +65,4 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
             "GROUP BY FUNCTION('DATE_FORMAT', o.orderDate, '%Y-%m-%d') " +
             "ORDER BY day")
     List<Object[]> getRevenueByDay(@Param("startDate") LocalDateTime startDate);
-
-    List<Order> findByClient_ClientId(Integer clientId);
-    List<Order> findByDriver_driverId(Integer driverId);
-    List<Order> findByOrderStatus(OrderStatus status);
-    List<Order> findByOrderDateBetween(LocalDateTime start, LocalDateTime end);
-    List<Order> findByClient_ClientIdAndOrderStatus(Integer clientId, OrderStatus status);
 }

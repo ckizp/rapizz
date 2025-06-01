@@ -20,6 +20,7 @@ import java.math.BigDecimal;
  *   <li><b>quantity</b>: INT NOT NULL DEFAULT 1</li>
  *   <li><b>pizza_size</b>: ENUM('NAINE', 'HUMAINE', 'OGRESSE') NOT NULL</li>
  *   <li><b>pizza_price</b>: DECIMAL(5, 2) NOT NULL</li>
+ *   <li><b>free_reason</b>: ENUM('NOT_FREE', 'LOYALTY', 'LATE_DELIVERY') NOT NULL DEFAULT 'NOT_FREE' — defined by {@link FreeReason}</li>
  * </ul>
  *
  * <p>Many-to-one relations to {@code Order} and {@code Pizza}, both lazily loaded.</p>
@@ -75,8 +76,14 @@ public class OrderPizza {
     private BigDecimal pizzaPrice;
 
     /**
-     * Indicates if this pizza is free due to loyalty program.
+     * Tracks the reason if an item is provided for free.
+     * @see FreeReason
      */
-    @Column(name = "is_free", nullable = false)
-    private Boolean isFree = false;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "free_reason", nullable = false)
+    private FreeReason freeReason = FreeReason.NOT_FREE;
+
+    public boolean isFree() {
+        return freeReason != FreeReason.NOT_FREE;
+    }
 }

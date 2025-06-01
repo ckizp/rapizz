@@ -1,5 +1,6 @@
 package fr.rapizz.view.panels;
 
+import fr.rapizz.controller.StatisticsController;
 import fr.rapizz.model.OrderStatus;
 import fr.rapizz.service.StatisticsService;
 import fr.rapizz.view.theme.AppTheme;
@@ -26,7 +27,7 @@ import java.util.Objects;
  */
 @Slf4j
 public class StatisticsPanel extends JPanel {
-    private final StatisticsService statisticsService;
+    private final StatisticsController statisticsController;
     
     // Filter components
     private JComboBox<String> periodComboBox;
@@ -45,10 +46,10 @@ public class StatisticsPanel extends JPanel {
     
     /**
      * Creates a new statistics panel
-     * @param statisticsService The statistics service
+     * @param statisticsController The statistics controller
      */
-    public StatisticsPanel(StatisticsService statisticsService) {
-        this.statisticsService = statisticsService;
+    public StatisticsPanel(StatisticsController statisticsController) {
+        this.statisticsController = statisticsController;
         
         setupPanel();
         createComponents();
@@ -122,31 +123,28 @@ public class StatisticsPanel extends JPanel {
      * Lays out all components.
      */
     private void layoutComponents() {
-        // Header fixe en haut (comme titleLabel dans MenuPanel)
+        // Fixed header at the top
         JPanel titlePanel = createTitlePanel();
         add(titlePanel, BorderLayout.NORTH);
 
-        // Content scrollable (comme MenuPanel)
+        // Scrollable content
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBackground(AppTheme.BACKGROUND);
 
-        // Créer les sections (sans le titlePanel qui est maintenant fixe)
+        // Create sections
         JPanel kpiPanel = createKpiPanel();
         JPanel chartsPanel = createChartsPanel();
 
-        // Ajouter les sections avec espacement
         contentPanel.add(kpiPanel);
         contentPanel.add(Box.createVerticalStrut(20));
         contentPanel.add(chartsPanel);
 
-        // ScrollPane (comme MenuPanel)
         JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         scrollPane.setBackground(AppTheme.BACKGROUND);
 
-        // Ajouter au CENTER (comme MenuPanel)
         add(scrollPane, BorderLayout.CENTER);
     }
     
@@ -425,12 +423,12 @@ public class StatisticsPanel extends JPanel {
             LocalDate startDate = calculateStartDateFromPeriod(selectedPeriod);
             
             // Load KPI data
-            BigDecimal totalRevenue = statisticsService.calculateTotalRevenue(startDate);
-            int totalOrders = statisticsService.countOrders(startDate);
+            BigDecimal totalRevenue = statisticsController.calculateTotalRevenue(startDate);
+            int totalOrders = statisticsController.countOrders(startDate);
             BigDecimal avgOrderValue = totalOrders > 0 ?
                     totalRevenue.divide(BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP) :
                     BigDecimal.ZERO;
-            String topDriver = statisticsService.findTopDriver(startDate);
+            String topDriver = statisticsController.findTopDriver(startDate);
             
             // Update KPI labels
             totalRevenueLabel.setText(totalRevenue + " €");
@@ -453,7 +451,7 @@ public class StatisticsPanel extends JPanel {
      */
     private void updatePizzaPopularityChart(LocalDate startDate) {
         DefaultPieDataset<String> dataset = new DefaultPieDataset<>();
-        Map<String, Integer> pizzaCounts = statisticsService.getMostPopularPizzas(startDate, 5);
+        Map<String, Integer> pizzaCounts = statisticsController.getMostPopularPizzas(startDate, 5);
         
         for (Map.Entry<String, Integer> entry : pizzaCounts.entrySet()) {
             dataset.setValue(entry.getKey(), entry.getValue());
@@ -474,7 +472,7 @@ public class StatisticsPanel extends JPanel {
      */
     private void updateOrderStatusChart(LocalDate startDate) {
         DefaultPieDataset<String> dataset = new DefaultPieDataset<>();
-        Map<OrderStatus, Integer> statusCounts = statisticsService.getOrderStatusCounts(startDate);
+        Map<OrderStatus, Integer> statusCounts = statisticsController.getOrderStatusCounts(startDate);
         
         for (Map.Entry<OrderStatus, Integer> entry : statusCounts.entrySet()) {
             dataset.setValue(entry.getKey().getDisplayName(), entry.getValue());
@@ -495,7 +493,7 @@ public class StatisticsPanel extends JPanel {
      */
     private void updateRevenueTimeChart(LocalDate startDate) {
         DefaultCategoryDataset dataset = new DefaultCategoryDataset();
-        Map<String, BigDecimal> revenueByPeriod = statisticsService.getRevenueByTimePeriod(startDate);
+        Map<String, BigDecimal> revenueByPeriod = statisticsController.getRevenueByTimePeriod(startDate);
         
         for (Map.Entry<String, BigDecimal> entry : revenueByPeriod.entrySet()) {
             dataset.addValue(entry.getValue(), "Chiffre d'affaires", entry.getKey());

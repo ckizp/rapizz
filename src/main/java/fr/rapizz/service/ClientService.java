@@ -60,6 +60,13 @@ public class ClientService {
     }
 
     @Transactional
+    public void updateLoyaltyCounter(Integer clientId, int newCount) {
+        Client client = repository.findById(clientId).orElseThrow();
+        client.setLoyaltyCounter(newCount);
+        repository.save(client);
+    }
+
+    @Transactional
     public void updateAmount(Integer clientId, BigDecimal newAmount) {
         repository.updateAmount(clientId, newAmount);
     }

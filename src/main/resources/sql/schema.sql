@@ -34,8 +34,8 @@ CREATE TABLE clients (
   client_id INT AUTO_INCREMENT PRIMARY KEY,
   first_name VARCHAR(48) NOT NULL,
   last_name VARCHAR(48) NOT NULL,
-  client_address VARCHAR(256),
-  phone_number VARCHAR(16),
+  client_address VARCHAR(256) NOT NULL,
+  phone_number VARCHAR(16) NOT NULL UNIQUE,
   amount DECIMAL(8,2) NOT NULL DEFAULT 0.0,
   loyalty_counter INT NOT NULL DEFAULT 0
 );
@@ -46,9 +46,9 @@ CREATE TABLE orders (
   driver_id INT,
   vehicle_id INT,
   order_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  delivered_at DATETIME DEFAULT NULL,
   order_status ENUM('PENDING', 'IN_PROGRESS', 'DELIVERED', 'CANCELED') NOT NULL DEFAULT 'PENDING',
   client_rating TINYINT DEFAULT NULL CHECK (client_rating BETWEEN 0 AND 5),
-  free_reason ENUM('NOT_FREE', 'LOYALTY', 'LATE_DELIVERY') NOT NULL DEFAULT 'NOT_FREE',
   FOREIGN KEY (client_id) REFERENCES clients(client_id),
   FOREIGN KEY (driver_id) REFERENCES delivery_drivers(driver_id),
   FOREIGN KEY (vehicle_id) REFERENCES vehicles(vehicle_id)
@@ -61,7 +61,7 @@ CREATE TABLE order_pizzas (
   quantity INT NOT NULL DEFAULT 1,
   pizza_size ENUM('NAINE', 'HUMAINE', 'OGRESSE') NOT NULL,
   pizza_price DECIMAL(5, 2) NOT NULL,
-  is_free BOOLEAN NOT NULL DEFAULT FALSE,
+  free_reason ENUM('NOT_FREE', 'LOYALTY', 'LATE_DELIVERY') NOT NULL DEFAULT 'NOT_FREE',
   FOREIGN KEY (order_id) REFERENCES orders(order_id),
   FOREIGN KEY (pizza_id) REFERENCES pizzas(pizza_id)
 );

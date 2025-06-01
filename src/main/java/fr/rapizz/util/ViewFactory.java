@@ -1,19 +1,17 @@
 package fr.rapizz.util;
 
-import fr.rapizz.controller.ClientController;
-import fr.rapizz.controller.DriverController;
-import fr.rapizz.controller.VehicleController;
+import fr.rapizz.controller.*;
 import fr.rapizz.service.*;
 import fr.rapizz.view.panels.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.swing.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @Component
@@ -23,53 +21,37 @@ public class ViewFactory {
     private final ClientController clientController;
     private final DriverController driverController;
     private final VehicleController vehicleController;
-    private final PizzaService pizzaService;
-    private final StatisticsService statisticsService;
-    @Autowired
-    private OrderService orderService;
-    @Autowired
-    private VehicleService vehicleService;
-    @Autowired
-    private DeliveryDriverService driverService;
-    @Autowired
-    private ClientService clientService;
+    private final DeliveryController deliveryController;
+    private final MenuController menuController;
+    private final StatisticsController statisticsController;
 
     private final Map<String, Supplier<JPanel>> viewCreators = new HashMap<>();
 
     @PostConstruct
     public void initializeViewCreators() {
-        log.info("Initialisation des créateurs de vues");
+        log.info("Initializing view creators");
 
-        viewCreators.put("MENU_PIZZAS", () -> new MenuPanel(pizzaService));
-        viewCreators.put("STATISTICS", () -> new StatisticsPanel(statisticsService));
-        viewCreators.put("DELIVERY", () -> {
-            log.info("Création du DeliveryPanel avec OrderService={}, DeliveryDriverService={}, VehicleService={}, ClientController={}, PizzaService={}, ClientService={}", 
-                orderService != null ? "OK" : "NULL",
-                driverService != null ? "OK" : "NULL",
-                vehicleService != null ? "OK" : "NULL",
-                clientController != null ? "OK" : "NULL",
-                pizzaService != null ? "OK" : "NULL",
-                clientService != null ? "OK" : "NULL");
-            return new DeliveryPanel(orderService, driverService, vehicleService, clientController, pizzaService, clientService);
-        });
+        viewCreators.put("MENU_PIZZAS", () -> new MenuPanel(menuController));
+        viewCreators.put("STATISTICS", () -> new StatisticsPanel(statisticsController));
+        viewCreators.put("DELIVERY", () -> new DeliveryPanel(deliveryController, clientController));
         viewCreators.put("DRIVER_MANAGEMENT", () -> new DriverManagementPanel(driverController));
         viewCreators.put("VEHICLE_MANAGEMENT", () -> new VehicleManagementPanel(vehicleController));
         viewCreators.put("CLIENT_MANAGEMENT", () -> new ClientManagementPanel(clientController));
 
-        log.info("Créateurs de vues initialisés: {}", viewCreators.keySet());
+        log.info("View creators initialized: {}", viewCreators.keySet());
     }
 
     public JPanel createView(String viewName) {
-        log.info("Demande de création de vue: {}", viewName);
+        log.debug("Creating view: {}", viewName);
 
         if (viewName == null || viewName.trim().isEmpty()) {
-            log.warn("Nom de vue null ou vide");
+            log.warn("Null or empty view name provided");
             return createErrorPanel("Nom de vue invalide");
         }
 
         Supplier<JPanel> creator = viewCreators.get(viewName);
         if (creator == null) {
-            log.warn("Vue inconnue demandée: {}", viewName);
+            log.warn("Unknown view requested: {}", viewName);
             return createErrorPanel("Vue inconnue: " + viewName);
         }
 
@@ -77,13 +59,13 @@ public class ViewFactory {
             JPanel panel = creator.get();
 
             if (panel == null) {
-                log.error("Le créateur a retourné null pour la vue: {}", viewName);
+                log.error("Creator returned null for view: {}", viewName);
                 return createErrorPanel("Erreur de création de la vue: " + viewName);
             }
 
-            log.info("Vue créée avec succès: {}", viewName);
+            log.info("View created successfully: {}", viewName);
 
-            // Assurer la visibilité
+            // Ensure visibility
             SwingUtilities.invokeLater(() -> {
                 panel.setVisible(true);
                 panel.revalidate();
@@ -92,14 +74,14 @@ public class ViewFactory {
 
             return panel;
         } catch (Exception e) {
-            log.error("Erreur lors de la création de la vue {}: {}", viewName, e.getMessage(), e);
+            log.error("Error creating view {}: {}", viewName, e.getMessage(), e);
             return createErrorPanel("Erreur lors de la création de la vue: " + viewName +
                     "\nErreur: " + e.getMessage());
         }
     }
 
     private JPanel createErrorPanel(String message) {
-        log.debug("Création d'un panel d'erreur: {}", message);
+        log.debug("Creating error panel: {}", message);
 
         JPanel errorPanel = new JPanel();
         errorPanel.setBackground(java.awt.Color.WHITE);
@@ -114,11 +96,10 @@ public class ViewFactory {
 
         errorPanel.add(errorLabel, java.awt.BorderLayout.CENTER);
 
-        // Bouton pour recharger (optionnel)
-        JButton retryButton = new JButton("Réessayer");
+        // Retry button (optional)
+        JButton retryButton = new JButton("Retry");
         retryButton.addActionListener(e -> {
-            log.info("Tentative de rechargement demandée");
-            // Vous pouvez ajouter ici une logique de rechargement si nécessaire
+            log.info("Reload attempt requested");
         });
 
         JPanel buttonPanel = new JPanel(new java.awt.FlowLayout());
@@ -131,11 +112,11 @@ public class ViewFactory {
 
     public boolean isViewSupported(String viewName) {
         boolean supported = viewCreators.containsKey(viewName);
-        log.debug("Vue {} supportée: {}", viewName, supported);
+        log.debug("View {} supported: {}", viewName, supported);
         return supported;
     }
 
-    public java.util.Set<String> getSupportedViews() {
+    public Set<String> getSupportedViews() {
         return viewCreators.keySet();
     }
 }

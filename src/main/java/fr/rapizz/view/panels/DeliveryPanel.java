@@ -1,22 +1,10 @@
 package fr.rapizz.view.panels;
 
-import fr.rapizz.model.Order;
-import fr.rapizz.model.OrderStatus;
-import fr.rapizz.model.DeliveryDriver;
-import fr.rapizz.model.Vehicle;
-import fr.rapizz.model.Client;
-import fr.rapizz.model.Pizza;
-import fr.rapizz.model.PizzaSize;
-import fr.rapizz.model.OrderPizza;
-import fr.rapizz.model.FreeReason;
-import fr.rapizz.service.OrderService;
-import fr.rapizz.service.DeliveryDriverService;
-import fr.rapizz.service.VehicleService;
-import fr.rapizz.service.PizzaService;
+import fr.rapizz.controller.DeliveryController;
 import fr.rapizz.controller.ClientController;
-import fr.rapizz.service.ClientService;
-import fr.rapizz.view.theme.AppTheme;
+import fr.rapizz.model.*;
 import fr.rapizz.util.Result;
+import fr.rapizz.view.theme.AppTheme;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.swing.*;
@@ -25,48 +13,48 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.Optional;
 
 @Slf4j
 public class DeliveryPanel extends JPanel {
-    private final OrderService orderService;
-    private final DeliveryDriverService driverService;
-    private final VehicleService vehicleService;
+    private final DeliveryController deliveryController;
     private final ClientController clientController;
-    private final PizzaService pizzaService;
-    private final ClientService clientService;
+
+    // UI Components
     private JPanel ordersPanel;
     private JComboBox<DeliveryDriver> driverCombo;
     private JComboBox<Vehicle> vehicleCombo;
     private JComboBox<Client> clientCombo;
     private JPanel pizzaSelectionPanel;
-    private List<OrderPizza> selectedPizzas;
+    private final List<OrderPizza> selectedPizzas;
+    private final List<JCheckBox> freePizzaCheckboxes;
+    private JLabel clientInfoLabel;
+    private JComboBox<String> orderFilterCombo;
+    private JLabel orderSummaryLabel;
 
-    public DeliveryPanel(OrderService orderService, DeliveryDriverService driverService, VehicleService vehicleService, ClientController clientController, PizzaService pizzaService, ClientService clientService) {
-        this.orderService = orderService;
-        this.driverService = driverService;
-        this.vehicleService = vehicleService;
+    private Client selectedClient;
+    private JLabel loyaltyInfoLabel;
+
+    public DeliveryPanel(DeliveryController deliveryController, ClientController clientController) {
+        this.deliveryController = deliveryController;
         this.clientController = clientController;
-        this.pizzaService = pizzaService;
-        this.clientService = clientService;
         this.selectedPizzas = new ArrayList<>();
-        log.info("Création du DeliveryPanel avec les services: OrderService={}, DriverService={}, VehicleService={}, ClientController={}, PizzaService={}, ClientService={}", 
-            orderService != null ? "OK" : "NULL",
-            driverService != null ? "OK" : "NULL",
-            vehicleService != null ? "OK" : "NULL",
-            clientController != null ? "OK" : "NULL",
-            pizzaService != null ? "OK" : "NULL",
-            clientService != null ? "OK" : "NULL");
+        this.freePizzaCheckboxes = new ArrayList<>();
+
+        log.info("Creating DeliveryPanel with controllers: DeliveryController={}, ClientController={}",
+                deliveryController != null ? "OK" : "NULL",
+                clientController != null ? "OK" : "NULL");
+
         initializeComponents();
     }
 
     private void initializeComponents() {
         try {
             log.info("Initializing DeliveryPanel components");
-            
+
             setLayout(new BorderLayout());
             setBackground(Color.WHITE);
             setOpaque(true);
@@ -74,42 +62,40 @@ public class DeliveryPanel extends JPanel {
             setPreferredSize(new Dimension(1200, 800));
             setMinimumSize(new Dimension(800, 600));
 
-            // ===== Main Title =====
-            JLabel mainTitle = new JLabel("Fiche de livraison");
+            // Main title
+            JLabel mainTitle = new JLabel("Gestion des Livraisons");
             try {
                 mainTitle.setFont(AppTheme.TITLE);
             } catch (Exception e) {
                 mainTitle.setFont(new Font("SansSerif", Font.BOLD, 24));
             }
-            mainTitle.setForeground(Color.WHITE);
+            mainTitle.setForeground(Color.BLACK);
             mainTitle.setBorder(new EmptyBorder(20, 20, 10, 20));
             mainTitle.setHorizontalAlignment(SwingConstants.CENTER);
             add(mainTitle, BorderLayout.NORTH);
 
-            // Central panel containing the two columns
+            // Two-column layout
             JPanel contentPanel = new JPanel(new GridLayout(1, 2, 20, 0));
             contentPanel.setOpaque(false);
             contentPanel.setPreferredSize(new Dimension(1160, 700));
 
-            // Left side: New Delivery
+            // Left: New delivery form
             JPanel formPanel = createFormPanel();
-            
-            // Right side: Orders List
+
+            // Right: Active orders list
             JPanel ordersContainer = createOrdersContainer();
 
-            // Add panels to contentPanel
             contentPanel.add(formPanel);
             contentPanel.add(ordersContainer);
 
-            // Add contentPanel to center
             add(contentPanel, BorderLayout.CENTER);
 
-            // Load orders
+            // Load initial data
             loadOrders();
 
             log.info("DeliveryPanel initialization completed successfully");
         } catch (Exception e) {
-            log.error("Error during DeliveryPanel initialization", e);
+            log.error("Error initializing DeliveryPanel", e);
             showErrorPanel(e.getMessage());
         }
     }
@@ -120,122 +106,181 @@ public class DeliveryPanel extends JPanel {
         formPanel.setPreferredSize(new Dimension(570, 700));
 
         JLabel titleForm = createTitle("Nouvelle Livraison");
+        titleForm.setAlignmentX(Component.CENTER_ALIGNMENT);
         formPanel.add(titleForm);
         formPanel.add(Box.createVerticalStrut(15));
 
-        // Liste des livreurs
-        List<DeliveryDriver> drivers = driverService.findAll();
-        driverCombo = new JComboBox<>(drivers.toArray(new DeliveryDriver[0]));
-        driverCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof DeliveryDriver) {
-                    DeliveryDriver driver = (DeliveryDriver) value;
-                    setText(driver.getFirstName() + " " + driver.getLastName());
-                }
-                return this;
-            }
-        });
+        // Driver selection
+        List<DeliveryDriver> allDrivers = deliveryController.getAllDrivers();
+        List<DeliveryDriver> availableDrivers = deliveryController.getAvailableDrivers();
+
+        driverCombo = new JComboBox<>(allDrivers.toArray(new DeliveryDriver[0]));
+        driverCombo.setRenderer(new DriverComboRenderer(availableDrivers));
         formPanel.add(createLabeledCombo("Livreur", driverCombo));
 
-        // Liste des véhicules
-        List<Vehicle> vehicles = vehicleService.findAll();
-        vehicleCombo = new JComboBox<>(vehicles.toArray(new Vehicle[0]));
-        vehicleCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof Vehicle) {
-                    Vehicle vehicle = (Vehicle) value;
-                    setText(vehicle.getVehicleType().getDisplayName() + " (" + vehicle.getLicensePlate() + ")");
-                }
-                return this;
-            }
-        });
+        // Vehicle selection
+        List<Vehicle> allVehicles = deliveryController.getAllVehicles();
+        List<Vehicle> availableVehicles = deliveryController.getAvailableVehicles();
+
+        vehicleCombo = new JComboBox<>(allVehicles.toArray(new Vehicle[0]));
+        vehicleCombo.setRenderer(new VehicleComboRenderer(availableVehicles));
         formPanel.add(createLabeledCombo("Véhicule", vehicleCombo));
 
-        // Liste des clients
+        // Client selection
         List<Client> clients = clientController.getAllClients();
         clientCombo = new JComboBox<>(clients.toArray(new Client[0]));
         clientCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof Client) {
-                    Client client = (Client) value;
+                if (value instanceof Client client) {
                     setText(client.getFirstName() + " " + client.getLastName());
                 }
                 return this;
             }
         });
-
+        clientCombo.addActionListener(e -> updateClientInfo());
         formPanel.add(createLabeledCombo("Client", clientCombo));
 
-        // Panel pour la sélection des pizzas
-        pizzaSelectionPanel = new JPanel();
-        pizzaSelectionPanel.setLayout(new BoxLayout(pizzaSelectionPanel, BoxLayout.Y_AXIS));
-        pizzaSelectionPanel.setOpaque(false);
-        pizzaSelectionPanel.setBorder(BorderFactory.createTitledBorder("Pizzas"));
+        // Client info display
+        JPanel clientInfoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 5));
+        clientInfoPanel.setOpaque(false);
+        clientInfoPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
-        // Bouton pour ajouter une pizza
-        JButton addPizzaButton = new JButton("Ajouter une pizza");
+        clientInfoLabel = new JLabel(" ");
+        clientInfoLabel.setFont(new Font("Arial", Font.ITALIC, 12));
+        clientInfoLabel.setForeground(new Color(100, 100, 100));
+
+        loyaltyInfoLabel = new JLabel(" ");
+        loyaltyInfoLabel.setFont(new Font("Arial", Font.BOLD, 12));
+        loyaltyInfoLabel.setForeground(new Color(0, 120, 0));
+
+        clientInfoPanel.add(clientInfoLabel);
+        clientInfoPanel.add(loyaltyInfoLabel);
+
+        formPanel.add(clientInfoPanel);;
+        formPanel.add(Box.createVerticalStrut(10));
+
+        // Pizza selection panel
+        pizzaSelectionPanel = createPizzaSelectionPanel();
+        formPanel.add(pizzaSelectionPanel);
+
+        // Order summary
+        JPanel summaryPanel = createOrderSummaryPanel();
+        formPanel.add(summaryPanel);
+
+        if (clientCombo.getItemCount() > 0) {
+            selectedClient = (Client) clientCombo.getItemAt(0);
+            clientCombo.setSelectedIndex(0);
+            updateClientInfo();
+        }
+
+        // Buttons panel
+        JPanel buttonsPanel = new JPanel(new GridLayout(1, 2, 10, 0));
+        buttonsPanel.setOpaque(false);
+        buttonsPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 45));
+        buttonsPanel.setPreferredSize(new Dimension(530, 45));
+
+        JButton addPizzaButton = new JButton();
+        AppTheme.styleButton(addPizzaButton, "Ajouter une Pizza", AppTheme.INFO_COLOR);
         addPizzaButton.addActionListener(e -> showAddPizzaDialog());
-        pizzaSelectionPanel.add(addPizzaButton);
-        pizzaSelectionPanel.add(Box.createVerticalStrut(10));
+        buttonsPanel.add(addPizzaButton);
 
-        // Panel pour afficher les pizzas sélectionnées
+        JButton createButton = new JButton();
+        AppTheme.styleButton(createButton, "Créer la Livraison", AppTheme.SUCCESS_COLOR);
+        createButton.addActionListener(e -> {
+            try {
+                createDelivery();
+            } catch (Exception ex) {
+                log.error("Error creating delivery", ex);
+                showErrorMessage("Erreur lors de la création de la livraison: " + ex.getMessage());
+            }
+        });
+        buttonsPanel.add(createButton);
+
+        formPanel.add(Box.createVerticalStrut(20));
+        formPanel.add(buttonsPanel);
+
+        return formPanel;
+    }
+
+    private void updateClientInfo() {
+        selectedClient = (Client) clientCombo.getSelectedItem();
+        if (selectedClient != null) {
+            String info = String.format("Solde: %.2f€ — ", selectedClient.getAmount().doubleValue());
+            clientInfoLabel.setText(info);
+
+            int loyaltyPoints = selectedClient.getLoyaltyCounter();
+            int availableFreePizzas = loyaltyPoints / 10;
+
+            if (availableFreePizzas > 0) {
+                loyaltyInfoLabel.setText(String.format("Points fidélité: %d (%d pizza%s gratuite%s disponible%s)",
+                        loyaltyPoints,
+                        availableFreePizzas,
+                        availableFreePizzas > 1 ? "s" : "",
+                        availableFreePizzas > 1 ? "s" : "",
+                        availableFreePizzas > 1 ? "s" : ""));
+            } else {
+                loyaltyInfoLabel.setText(String.format("Points fidélité: %d (aucune pizza gratuite disponible)", loyaltyPoints));
+            }
+
+            // Refresh les pizzas pour mettre à jour les checkboxes
+            updateSelectedPizzasPanel();
+            updateOrderSummary();
+        } else {
+            clientInfoLabel.setText(" ");
+            if (loyaltyInfoLabel != null) loyaltyInfoLabel.setText(" ");
+        }
+    }
+
+    private JPanel createPizzaSelectionPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createTitledBorder("Pizzas Sélectionnées"));
+
         JPanel selectedPizzasPanel = new JPanel();
         selectedPizzasPanel.setLayout(new BoxLayout(selectedPizzasPanel, BoxLayout.Y_AXIS));
         selectedPizzasPanel.setOpaque(false);
         JScrollPane scrollPane = new JScrollPane(selectedPizzasPanel);
         scrollPane.setPreferredSize(new Dimension(500, 200));
-        pizzaSelectionPanel.add(scrollPane);
+        scrollPane.setMinimumSize(new Dimension(500, 100));
+        panel.add(scrollPane);
 
-        formPanel.add(pizzaSelectionPanel);
+        return panel;
+    }
 
-        JButton btn = new JButton("Créer la livraison");
-        btn.setBackground(Color.BLACK);
-        btn.setForeground(Color.BLACK);
-        btn.setFocusPainted(false);
-        btn.setFont(new Font("SansSerif", Font.BOLD, 14));
-        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-        
-        btn.addActionListener(e -> {
-            try {
-                createDelivery();
-            } catch (Exception ex) {
-                log.error("Erreur lors de la création de la livraison", ex);
-                JOptionPane.showMessageDialog(this,
-                    "Erreur lors de la création de la livraison: " + ex.getMessage(),
-                    "Erreur",
-                    JOptionPane.ERROR_MESSAGE);
-            }
-        });
+    private JPanel createOrderSummaryPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createTitledBorder("Résumé de la Commande"));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
 
-        formPanel.add(Box.createVerticalStrut(20));
-        formPanel.add(btn);
+        orderSummaryLabel = new JLabel("Aucune pizza sélectionnée");
+        orderSummaryLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        orderSummaryLabel.setForeground(new Color(50, 50, 50));
+        panel.add(orderSummaryLabel);
 
-        return formPanel;
+        return panel;
     }
 
     private void showAddPizzaDialog() {
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Ajouter une pizza", true);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Ajouter une Pizza", true);
         dialog.setLayout(new BorderLayout());
 
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Sélection de la pizza
-        List<Pizza> pizzas = pizzaService.findAll();
+        // Pizza selection
+        List<Pizza> pizzas = deliveryController.getAllPizzas();
         JComboBox<Pizza> pizzaCombo = new JComboBox<>(pizzas.toArray(new Pizza[0]));
         pizzaCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof Pizza) {
-                    Pizza pizza = (Pizza) value;
+                if (value instanceof Pizza pizza) {
                     setText(pizza.getPizzaName() + " (€" + pizza.getBasePrice() + ")");
                 }
                 return this;
@@ -243,14 +288,14 @@ public class DeliveryPanel extends JPanel {
         });
         contentPanel.add(createLabeledCombo("Pizza", pizzaCombo));
 
-        // Sélection de la taille
+        // Size selection
         JComboBox<PizzaSize> sizeCombo = new JComboBox<>(PizzaSize.values());
+        sizeCombo.setSelectedItem(PizzaSize.HUMAINE);
         sizeCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof PizzaSize) {
-                    PizzaSize size = (PizzaSize) value;
+                if (value instanceof PizzaSize size) {
                     setText(size.getDisplayName());
                 }
                 return this;
@@ -258,15 +303,19 @@ public class DeliveryPanel extends JPanel {
         });
         contentPanel.add(createLabeledCombo("Taille", sizeCombo));
 
-        // Sélection de la quantité
+        // Quantity selection
         SpinnerNumberModel spinnerModel = new SpinnerNumberModel(1, 1, 10, 1);
         JSpinner quantitySpinner = new JSpinner(spinnerModel);
         contentPanel.add(createLabeledSpinner("Quantité", quantitySpinner));
 
-        // Boutons
+        // Buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancelButton = new JButton("Annuler");
-        JButton addButton = new JButton("Ajouter");
+
+        JButton cancelButton = new JButton();
+        AppTheme.styleButton(cancelButton, "Annuler", AppTheme.NEUTRAL_COLOR);
+
+        JButton addButton = new JButton();
+        AppTheme.styleButton(addButton, "Ajouter", AppTheme.SUCCESS_COLOR);
 
         cancelButton.addActionListener(e -> dialog.dispose());
         addButton.addActionListener(e -> {
@@ -278,7 +327,7 @@ public class DeliveryPanel extends JPanel {
             orderPizza.setPizza(selectedPizza);
             orderPizza.setPizzaSize(selectedSize);
             orderPizza.setQuantity(quantity);
-            orderPizza.setPizzaPrice(pizzaService.calculatePrice(selectedPizza, selectedSize));
+            orderPizza.setPizzaPrice(deliveryController.calculatePizzaPrice(selectedPizza, selectedSize));
 
             selectedPizzas.add(orderPizza);
             updateSelectedPizzasPanel();
@@ -296,260 +345,270 @@ public class DeliveryPanel extends JPanel {
     }
 
     private void updateSelectedPizzasPanel() {
-        JPanel selectedPizzasPanel = (JPanel) ((JScrollPane) pizzaSelectionPanel.getComponent(2)).getViewport().getView();
+        JPanel selectedPizzasPanel = (JPanel) ((JScrollPane) pizzaSelectionPanel.getComponent(0)).getViewport().getView();
         selectedPizzasPanel.removeAll();
-        selectedPizzasPanel.setLayout(new BoxLayout(selectedPizzasPanel, BoxLayout.Y_AXIS));
 
-        // Agréger les pizzas identiques (sauf si gratuites)
-        Map<String, OrderPizza> aggregatedPizzas = new HashMap<>();
-        List<OrderPizza> freePizzas = new ArrayList<>();
+        List<Boolean> previousStates = new ArrayList<>();
+        for (JCheckBox checkbox : freePizzaCheckboxes) {
+            previousStates.add(checkbox.isSelected());
+        }
 
-        for (OrderPizza orderPizza : selectedPizzas) {
-            if (orderPizza.getIsFree()) {
-                freePizzas.add(orderPizza);
-            } else {
-                String key = orderPizza.getPizza().getPizzaName() + "_" + orderPizza.getPizzaSize();
-                if (aggregatedPizzas.containsKey(key)) {
-                    OrderPizza existing = aggregatedPizzas.get(key);
-                    existing.setQuantity(existing.getQuantity() + orderPizza.getQuantity());
-                } else {
-                    aggregatedPizzas.put(key, orderPizza);
+        freePizzaCheckboxes.clear();
+
+        if (selectedClient == null) {
+            selectedPizzasPanel.revalidate();
+            selectedPizzasPanel.repaint();
+            updateOrderSummary();
+            return;
+        }
+
+        int availableFreePizzas = selectedClient.getLoyaltyCounter() / 10;
+
+        for (int i = 0; i < selectedPizzas.size(); i++) {
+            OrderPizza orderPizza = selectedPizzas.get(i);
+
+            JPanel pizzaPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+            pizzaPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+            pizzaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+            pizzaPanel.setPreferredSize(new Dimension(480, 40));
+            pizzaPanel.setOpaque(false);
+
+            String pizzaText = String.format("%dx %s (%s) - %.2f€",
+                    orderPizza.getQuantity(),
+                    orderPizza.getPizza().getPizzaName(),
+                    orderPizza.getPizzaSize().getDisplayName(),
+                    orderPizza.getPizzaPrice().multiply(new BigDecimal(orderPizza.getQuantity())));
+
+            JLabel pizzaLabel = new JLabel(pizzaText);
+            pizzaLabel.setFont(new Font("Arial", Font.PLAIN, 12));
+            pizzaLabel.setPreferredSize(new Dimension(250, 25));
+            pizzaLabel.setVerticalAlignment(SwingConstants.CENTER);
+            pizzaPanel.add(pizzaLabel);
+
+            pizzaPanel.add(Box.createHorizontalStrut(10));
+
+            JCheckBox loyaltyCheckbox = new JCheckBox("Fidélité (gratuite)");
+            loyaltyCheckbox.setFont(new Font("Arial", Font.PLAIN, 11));
+            loyaltyCheckbox.setOpaque(false);
+            loyaltyCheckbox.setPreferredSize(new Dimension(120, 25));
+
+            if (i < previousStates.size()) {
+                loyaltyCheckbox.setSelected(previousStates.get(i));
+            }
+
+            freePizzaCheckboxes.add(loyaltyCheckbox);
+
+            int usedFreePizzas = 0;
+            for (JCheckBox cb : freePizzaCheckboxes) {
+                if (cb.isSelected()) {
+                    usedFreePizzas++;
                 }
             }
-        }
 
-        // Afficher d'abord les pizzas payantes
-        for (OrderPizza orderPizza : aggregatedPizzas.values()) {
-            JPanel pizzaPanel = new JPanel(new BorderLayout());
-            pizzaPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-            pizzaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+            boolean canUseLoyalty = usedFreePizzas < availableFreePizzas || loyaltyCheckbox.isSelected();
+            loyaltyCheckbox.setEnabled(canUseLoyalty);
 
-            String pizzaText = String.format("x%d %s (%s) - %.2f€",
-                orderPizza.getQuantity(),
-                orderPizza.getPizza().getPizzaName(),
-                orderPizza.getPizzaSize().getDisplayName(),
-                orderPizza.getPizzaPrice().multiply(new BigDecimal(orderPizza.getQuantity())));
+            if (!loyaltyCheckbox.isEnabled()) {
+                loyaltyCheckbox.setToolTipText("Points de fidélité insuffisants");
+            } else {
+                loyaltyCheckbox.setToolTipText("Utiliser 10 points de fidélité pour cette pizza");
+            }
 
-            JLabel pizzaLabel = new JLabel(pizzaText);
-            pizzaPanel.add(pizzaLabel, BorderLayout.CENTER);
+            loyaltyCheckbox.addActionListener(e -> {
+                updateCheckboxAvailability();
+                updateOrderSummary();
+            });
+
+            pizzaPanel.add(loyaltyCheckbox);
 
             JButton removeButton = new JButton("X");
-            removeButton.setMaximumSize(new Dimension(30, 25));
+            removeButton.setPreferredSize(new Dimension(25, 25));
+            removeButton.setFont(new Font("Arial", Font.BOLD, 12));
+            removeButton.setForeground(Color.RED);
+            removeButton.setBackground(Color.WHITE);
+            removeButton.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
+            removeButton.setFocusPainted(false);
+            removeButton.setToolTipText("Supprimer cette pizza");
+
             removeButton.addActionListener(e -> {
                 selectedPizzas.remove(orderPizza);
                 updateSelectedPizzasPanel();
+                updateOrderSummary();
             });
-            pizzaPanel.add(removeButton, BorderLayout.EAST);
 
-            selectedPizzasPanel.add(pizzaPanel);
-        }
-
-        // Afficher ensuite les pizzas gratuites
-        for (OrderPizza orderPizza : freePizzas) {
-            JPanel pizzaPanel = new JPanel(new BorderLayout());
-            pizzaPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-            pizzaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-
-            String pizzaText = String.format("x%d %s (%s) OFFERTE 🎁",
-                orderPizza.getQuantity(),
-                orderPizza.getPizza().getPizzaName(),
-                orderPizza.getPizzaSize().getDisplayName());
-            
-            JLabel pizzaLabel = new JLabel(pizzaText);
-            pizzaLabel.setFont(new Font("Arial", Font.BOLD, 14));
-            pizzaLabel.setForeground(new Color(0, 128, 0)); // Vert foncé
-            pizzaPanel.add(pizzaLabel, BorderLayout.CENTER);
-
-            JButton removeButton = new JButton("X");
-            removeButton.setMaximumSize(new Dimension(30, 25));
-            removeButton.addActionListener(e -> {
-                selectedPizzas.remove(orderPizza);
-                updateSelectedPizzasPanel();
-            });
-            pizzaPanel.add(removeButton, BorderLayout.EAST);
-
+            pizzaPanel.add(removeButton);
             selectedPizzasPanel.add(pizzaPanel);
         }
 
         selectedPizzasPanel.revalidate();
         selectedPizzasPanel.repaint();
+        updateOrderSummary();
     }
 
-    private String formatPhoneNumber(String phone) {
-        // Si le numéro commence déjà par +, le retourner tel quel
-        if (phone.startsWith("+")) {
-            return phone;
+    private void updateCheckboxAvailability() {
+        if (selectedClient == null) return;
+
+        int availableFreePizzas = selectedClient.getLoyaltyCounter() / 10;
+        int usedFreePizzas = 0;
+
+        for (JCheckBox checkbox : freePizzaCheckboxes) {
+            if (checkbox.isSelected()) {
+                usedFreePizzas++;
+            }
         }
-        
-        // Supprimer tous les caractères non numériques
-        String digitsOnly = phone.replaceAll("[^0-9]", "");
-        
-        // Si le numéro commence par 0, le remplacer par 33
-        if (digitsOnly.startsWith("0")) {
-            digitsOnly = "33" + digitsOnly.substring(1);
+
+        for (JCheckBox checkbox : freePizzaCheckboxes) {
+            if (checkbox.isSelected()) {
+                checkbox.setEnabled(true);
+                checkbox.setToolTipText("Utiliser 10 points de fidélité pour cette pizza");
+            } else {
+                boolean canSelect = usedFreePizzas < availableFreePizzas;
+                checkbox.setEnabled(canSelect);
+                if (canSelect) {
+                    checkbox.setToolTipText("Utiliser 10 points de fidélité pour cette pizza");
+                } else {
+                    checkbox.setToolTipText("Points de fidélité insuffisants");
+                }
+            }
         }
-        
-        // Si le numéro ne commence pas par 33, l'ajouter
-        if (!digitsOnly.startsWith("33")) {
-            digitsOnly = "33" + digitsOnly;
+    }
+
+    private void updateOrderSummary() {
+        if (selectedPizzas.isEmpty()) {
+            orderSummaryLabel.setText("Aucune pizza sélectionnée");
+            return;
         }
-        
-        // S'assurer que le numéro commence par un chiffre entre 1 et 9
-        if (digitsOnly.charAt(0) == '0') {
-            digitsOnly = "1" + digitsOnly.substring(1);
+
+        BigDecimal totalPrice = BigDecimal.ZERO;
+        BigDecimal loyaltyDiscount = BigDecimal.ZERO;
+        int freePizzasUsed = 0;
+
+        for (int i = 0; i < selectedPizzas.size(); i++) {
+            OrderPizza pizza = selectedPizzas.get(i);
+            BigDecimal unitPrice = pizza.getPizzaPrice();
+            int quantity = pizza.getQuantity();
+
+            if (i < freePizzaCheckboxes.size() && freePizzaCheckboxes.get(i).isSelected()) {
+                loyaltyDiscount = loyaltyDiscount.add(unitPrice);
+                freePizzasUsed++;
+
+                if (quantity > 1) {
+                    BigDecimal remainingTotal = unitPrice.multiply(new BigDecimal(quantity - 1));
+                    totalPrice = totalPrice.add(remainingTotal);
+                }
+            } else {
+                BigDecimal pizzaTotal = unitPrice.multiply(new BigDecimal(quantity));
+                totalPrice = totalPrice.add(pizzaTotal);
+            }
         }
-        
-        // Ajouter le + au début
-        return "+" + digitsOnly;
+
+        StringBuilder summary = new StringBuilder();
+        summary.append("<html>");
+
+        if (loyaltyDiscount.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal originalTotal = totalPrice.add(loyaltyDiscount);
+            summary.append(String.format("Sous-total: %.2f€<br>", originalTotal.doubleValue()));
+            summary.append(String.format("Remise fidélité (%d pizza%s): -%.2f€<br>",
+                    freePizzasUsed,
+                    freePizzasUsed > 1 ? "s" : "",
+                    loyaltyDiscount.doubleValue()));
+            summary.append(String.format("<b>Total à payer: %.2f€</b>", totalPrice.doubleValue()));
+        } else {
+            summary.append(String.format("<b>Total: %.2f€</b>", totalPrice.doubleValue()));
+        }
+
+        summary.append("</html>");
+        orderSummaryLabel.setText(summary.toString());
     }
 
     private void createDelivery() {
-        try {
-            // Field validation
-            if (driverCombo.getSelectedItem() == null) {
-                throw new IllegalArgumentException("Please select a driver");
-            }
-            if (vehicleCombo.getSelectedItem() == null) {
-                throw new IllegalArgumentException("Please select a vehicle");
-            }
-            Object selectedClient = clientCombo.getSelectedItem();
-            if (selectedClient == null || !(selectedClient instanceof Client)) {
-                throw new IllegalArgumentException("Please select a valid client");
-            }
-            if (selectedPizzas.isEmpty()) {
-                throw new IllegalArgumentException("Please add at least one pizza");
-            }
-
-            Client client = (Client) selectedClient;
-            
-            // Calculer le total de la commande
-            BigDecimal totalAmount = BigDecimal.ZERO;
-            for (OrderPizza orderPizza : selectedPizzas) {
-                if (!orderPizza.getIsFree()) {
-                    totalAmount = totalAmount.add(orderPizza.getPizzaPrice().multiply(new BigDecimal(orderPizza.getQuantity())));
-                }
-            }
-
-            // Vérifier si le client a assez d'argent
-            if (client.getAmount().compareTo(totalAmount) < 0) {
-                String message = String.format(
-                    "Solde insuffisant. Solde actuel: %.2f€, Montant de la commande: %.2f€",
-                    client.getAmount().doubleValue(),
-                    totalAmount.doubleValue()
-                );
-                log.warn("Tentative de commande avec solde insuffisant pour le client {}: {}", 
-                    client.getClientId(), message);
-                JOptionPane.showMessageDialog(this,
-                    message,
-                    "Solde insuffisant",
-                    JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
-            log.info("Starting order creation with {} pizzas", selectedPizzas.size());
-
-            // Order creation
-            Order order = new Order();
-            order.setDriver((DeliveryDriver) driverCombo.getSelectedItem());
-            order.setVehicle((Vehicle) vehicleCombo.getSelectedItem());
-            order.setClient(client);
-            order.setOrderStatus(OrderStatus.PENDING);
-
-            // Adding pizzas to the order
-            log.info("Adding {} pizzas to the order...", selectedPizzas.size());
-            for (OrderPizza orderPizza : selectedPizzas) {
-                log.info("Creating new OrderPizza for pizza: {} (size: {}, quantity: {})", 
-                    orderPizza.getPizza().getPizzaName(),
-                    orderPizza.getPizzaSize(),
-                    orderPizza.getQuantity());
-
-                OrderPizza newOrderPizza = new OrderPizza();
-                newOrderPizza.setPizza(orderPizza.getPizza());
-                newOrderPizza.setPizzaSize(orderPizza.getPizzaSize());
-                newOrderPizza.setQuantity(orderPizza.getQuantity());
-                newOrderPizza.setPizzaPrice(orderPizza.getPizzaPrice());
-                newOrderPizza.setIsFree(orderPizza.getIsFree());
-                newOrderPizza.setOrder(order);
-                order.addOrderItem(newOrderPizza);
-            }
-
-            // Save order with all pizzas
-            log.info("Saving order with pizzas...");
-            Order savedOrder = orderService.save(order);
-            log.info("Order saved with ID: {} and {} pizzas", 
-                savedOrder.getOrderId(), savedOrder.getOrderItems().size());
-
-            // Débiter le compte du client
-            try {
-                // Calculer le nouveau solde avec 2 décimales
-                BigDecimal newAmount = client.getAmount().subtract(totalAmount).setScale(2, BigDecimal.ROUND_HALF_UP);
-                
-                // Mettre à jour uniquement le solde via le service
-                clientService.updateAmount(client.getClientId(), newAmount);
-
-                log.info("Client {} account debited of {}€. New balance: {}€", 
-                    client.getClientId(), 
-                    totalAmount.doubleValue(),
-                    newAmount.doubleValue());
-            } catch (Exception e) {
-                log.error("Error while debiting client account", e);
-                JOptionPane.showMessageDialog(this,
-                    "Erreur lors du débit du compte client. Veuillez contacter l'administrateur.",
-                    "Erreur",
-                    JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            // Final verification
-            int expectedTotalPizzas = selectedPizzas.stream()
-                .mapToInt(OrderPizza::getQuantity)
-                .sum();
-            int actualTotalPizzas = savedOrder.getOrderItems().stream()
-                .mapToInt(OrderPizza::getQuantity)
-                .sum();
-
-            if (actualTotalPizzas != expectedTotalPizzas) {
-                log.error("Incorrect number of pizzas in saved order. Expected: {}, Got: {}", 
-                    expectedTotalPizzas, actualTotalPizzas);
-                log.error("Expected pizzas details:");
-                for (OrderPizza pizza : selectedPizzas) {
-                    log.error("- {} (size: {}, quantity: {})", 
-                        pizza.getPizza().getPizzaName(),
-                        pizza.getPizzaSize(),
-                        pizza.getQuantity());
-                }
-                log.error("Saved pizzas details:");
-                for (OrderPizza pizza : savedOrder.getOrderItems()) {
-                    log.error("- {} (size: {}, quantity: {}, isFree: {})", 
-                        pizza.getPizza().getPizzaName(),
-                        pizza.getPizzaSize(),
-                        pizza.getQuantity(),
-                        pizza.getIsFree());
-                }
-                throw new RuntimeException("Error while saving pizzas");
-            }
-
-            // Refresh orders list
-            loadOrders();
-
-            // Reset form
-            driverCombo.setSelectedIndex(0);
-            vehicleCombo.setSelectedIndex(0);
-            clientCombo.setSelectedIndex(0);
-            selectedPizzas.clear();
-            updateSelectedPizzasPanel();
-
-            JOptionPane.showMessageDialog(this,
-                String.format("Commande créée avec succès ! Montant débité : %.2f€", totalAmount.doubleValue()),
-                "Succès",
-                JOptionPane.INFORMATION_MESSAGE);
-        } catch (Exception e) {
-            log.error("Error during delivery creation", e);
-            JOptionPane.showMessageDialog(this,
-                "Erreur lors de la création de la livraison: " + e.getMessage(),
-                "Erreur",
-                JOptionPane.ERROR_MESSAGE);
+        // Validation
+        if (driverCombo.getSelectedItem() == null) {
+            throw new IllegalArgumentException("Veuillez sélectionner un livreur");
         }
+        if (vehicleCombo.getSelectedItem() == null) {
+            throw new IllegalArgumentException("Veuillez sélectionner un véhicule");
+        }
+        if (selectedClient == null) {
+            throw new IllegalArgumentException("Veuillez sélectionner un client valide");
+        }
+        if (selectedPizzas.isEmpty()) {
+            throw new IllegalArgumentException("Veuillez ajouter au moins une pizza");
+        }
+
+        // Free pizzas
+        List<Integer> freePizzaIndices = new ArrayList<>();
+        for (int i = 0; i < freePizzaCheckboxes.size(); i++) {
+            if (freePizzaCheckboxes.get(i).isSelected()) {
+                freePizzaIndices.add(i);
+            }
+        }
+
+        BigDecimal totalToPay = BigDecimal.ZERO;
+        for (int i = 0; i < selectedPizzas.size(); i++) {
+            OrderPizza pizza = selectedPizzas.get(i);
+            BigDecimal unitPrice = pizza.getPizzaPrice();
+            int quantity = pizza.getQuantity();
+
+            if (freePizzaIndices.contains(i)) {
+                if (quantity > 1) {
+                    BigDecimal remainingTotal = unitPrice.multiply(new BigDecimal(quantity - 1));
+                    totalToPay = totalToPay.add(remainingTotal);
+                }
+            } else {
+                BigDecimal pizzaTotal = unitPrice.multiply(new BigDecimal(quantity));
+                totalToPay = totalToPay.add(pizzaTotal);
+            }
+        }
+
+        if (selectedClient.getAmount().compareTo(totalToPay) < 0) {
+            showErrorMessage(String.format("Solde insuffisant.\nSolde disponible: %.2f€\nTotal à payer: %.2f€",
+                    selectedClient.getAmount().doubleValue(), totalToPay.doubleValue()));
+            return;
+        }
+
+        log.info("Creating order with {} pizzas, {} free pizzas (loyalty), total: {}€",
+                selectedPizzas.size(), freePizzaIndices.size(), totalToPay.doubleValue());
+
+        Result<Order> result = deliveryController.createDelivery(
+                (DeliveryDriver) driverCombo.getSelectedItem(),
+                (Vehicle) vehicleCombo.getSelectedItem(),
+                selectedClient,
+                selectedPizzas,
+                "BALANCE",
+                freePizzaIndices
+        );
+
+        if (result.isSuccess()) {
+            refreshAllClientData();
+            resetForm();
+            loadOrders();
+            showSuccessMessage("Livraison créée avec succès !");
+        } else {
+            showErrorMessage(String.join("\n", result.getErrors()));
+        }
+    }
+
+    private void refreshAvailabilityIndicators() {
+        List<DeliveryDriver> availableDrivers = deliveryController.getAvailableDrivers();
+        driverCombo.setRenderer(new DriverComboRenderer(availableDrivers));
+
+        List<Vehicle> availableVehicles = deliveryController.getAvailableVehicles();
+        vehicleCombo.setRenderer(new VehicleComboRenderer(availableVehicles));
+
+        driverCombo.repaint();
+        vehicleCombo.repaint();
+    }
+
+    private void resetForm() {
+        if (driverCombo.getItemCount() > 0) driverCombo.setSelectedIndex(0);
+        if (vehicleCombo.getItemCount() > 0) vehicleCombo.setSelectedIndex(0);
+        if (clientCombo.getItemCount() > 0) clientCombo.setSelectedIndex(0);
+        selectedPizzas.clear();
+        freePizzaCheckboxes.clear();
+        updateSelectedPizzasPanel();
+        updateClientInfo();
+        refreshAvailabilityIndicators();
     }
 
     private JPanel createOrdersContainer() {
@@ -557,90 +616,342 @@ public class DeliveryPanel extends JPanel {
         ordersContainer.setLayout(new BorderLayout());
         ordersContainer.setPreferredSize(new Dimension(570, 700));
 
-        JLabel titleOrders = createTitle("Commandes en cours");
-        ordersContainer.add(titleOrders, BorderLayout.NORTH);
+        // Header
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(Color.WHITE);
+        headerPanel.setOpaque(true);
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 15, 0));
 
-        // Panel pour la liste des commandes avec scroll
+        JLabel titleOrders = createTitle("Commandes");
+        headerPanel.add(titleOrders, BorderLayout.WEST);
+
+        JPanel filterPanel = createOrderFilterPanel();
+        headerPanel.add(filterPanel, BorderLayout.EAST);
+
+        ordersContainer.add(headerPanel, BorderLayout.NORTH);
+
         ordersPanel = new JPanel();
         ordersPanel.setLayout(new BoxLayout(ordersPanel, BoxLayout.Y_AXIS));
         ordersPanel.setOpaque(true);
         ordersPanel.setBackground(Color.WHITE);
 
-        // Ajout du scroll
         JScrollPane scrollPane = new JScrollPane(ordersPanel);
         scrollPane.setBorder(null);
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        
+
         ordersContainer.add(scrollPane, BorderLayout.CENTER);
         return ordersContainer;
     }
 
-    private void showErrorPanel(String errorMessage) {
-        removeAll();
-        setLayout(new BorderLayout());
-        setBackground(Color.WHITE);
-        
-        JLabel errorLabel = new JLabel("Erreur: " + errorMessage);
-        errorLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        errorLabel.setForeground(Color.RED);
-        errorLabel.setFont(new Font("SansSerif", Font.BOLD, 16));
-        
-        add(errorLabel, BorderLayout.CENTER);
-        revalidate();
-        repaint();
+    private JPanel createOrderFilterPanel() {
+        JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        filterPanel.setBackground(Color.WHITE);
+        filterPanel.setOpaque(true);
+
+        JLabel filterLabel = new JLabel("Afficher: ");
+        filterLabel.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        filterPanel.add(filterLabel);
+
+        String[] filterOptions = {
+                "Commandes actives",
+                "En attente",
+                "En Cours de livraison",
+                "Livrées",
+                "Toutes"
+        };
+
+        orderFilterCombo = new JComboBox<>(filterOptions);
+        orderFilterCombo.setSelectedItem("Commandes Actives"); // Par défaut
+        orderFilterCombo.setPreferredSize(new Dimension(180, 30));
+        orderFilterCombo.addActionListener(e -> loadOrders());
+        filterPanel.add(orderFilterCombo);
+
+        return filterPanel;
     }
 
     public void loadOrders() {
-        if (orderService == null) {
-            log.error("OrderService is null, cannot load orders");
-            showNoOrdersMessage("Service unavailable");
-            return;
-        }
-        
-        if (ordersPanel == null) {
-            log.error("OrdersPanel is null, cannot load orders");
-            return;
-        }
-        
+        ordersPanel.removeAll();
+
         try {
-            log.info("Loading orders...");
-            ordersPanel.removeAll();
-            
-            List<Order> orders = orderService.findActiveOrders();
-            log.info("Number of orders found: {}", orders.size());
+            String selectedFilter = (String) orderFilterCombo.getSelectedItem();
+            log.info("Loading orders with filter: {}", selectedFilter);
+
+            List<Order> orders = getOrdersByFilter(selectedFilter);
+            log.info("Found {} orders for filter {}", orders.size(), selectedFilter);
 
             if (orders.isEmpty()) {
-                showNoOrdersMessage("No active orders");
+                showNoOrdersMessage("Aucune commande trouvée pour ce filtre");
             } else {
                 for (Order order : orders) {
                     JPanel orderCard = createOrderCard(order);
-                    JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.CENTER));
-                    wrapper.setOpaque(false);
-                    wrapper.add(orderCard);
-                    ordersPanel.add(wrapper);
+                    ordersPanel.add(orderCard);
                     ordersPanel.add(Box.createVerticalStrut(10));
                 }
             }
 
             ordersPanel.revalidate();
             ordersPanel.repaint();
-            
-            // Force refresh
+
+            refreshAvailabilityIndicators();
+
             SwingUtilities.invokeLater(() -> {
                 revalidate();
                 repaint();
             });
-            
-            log.info("Orders loading completed");
+
+            log.info("Orders loading completed successfully for filter: {}", selectedFilter);
         } catch (Exception e) {
-            log.error("Error while loading orders", e);
-            showNoOrdersMessage("Loading error: " + e.getMessage());
+            log.error("Error loading orders with filter", e);
+            showNoOrdersMessage("Erreur de chargement: " + e.getMessage());
         }
     }
 
+    private List<Order> getOrdersByFilter(String filter) {
+        return switch (filter) {
+            case "Commandes actives" -> deliveryController.getActiveOrders();
+            case "En attente" -> deliveryController.getOrdersByStatus(OrderStatus.PENDING);
+            case "En cours de livraison" -> deliveryController.getOrdersByStatus(OrderStatus.IN_PROGRESS);
+            case "Livrées" -> deliveryController.getOrdersByStatus(OrderStatus.DELIVERED);
+            case "Toutes" -> deliveryController.getAllOrders();
+            default -> deliveryController.getActiveOrders();
+        };
+    }
+
+    private JPanel createOrderCard(Order order) {
+        JPanel card = new JPanel(new BorderLayout());
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.GRAY),
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        card.setMaximumSize(new Dimension(480, Integer.MAX_VALUE));
+        card.setMinimumSize(new Dimension(400, 150));
+        card.setBackground(Color.WHITE);
+        card.setOpaque(true);
+
+        // Order header
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(Color.WHITE);
+        headerPanel.setOpaque(true);
+        headerPanel.setPreferredSize(new Dimension(480, 45));
+
+        JPanel leftHeader = new JPanel();
+        leftHeader.setLayout(new BoxLayout(leftHeader, BoxLayout.Y_AXIS));
+        leftHeader.setBackground(Color.WHITE);
+        leftHeader.setOpaque(true);
+
+        JLabel orderIdLabel = new JLabel("Commande #" + order.getOrderId());
+        orderIdLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        leftHeader.add(orderIdLabel);
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        JLabel dateLabel = new JLabel("Créée le " + order.getOrderDate().format(formatter));
+        dateLabel.setFont(new Font("Arial", Font.PLAIN, 12));
+        dateLabel.setForeground(Color.GRAY);
+        leftHeader.add(dateLabel);
+
+        headerPanel.add(leftHeader, BorderLayout.WEST);
+
+        JPanel rightHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        rightHeader.setBackground(Color.WHITE);
+        rightHeader.setOpaque(true);
+
+        JLabel statusLabel = new JLabel(order.getOrderStatus().getDisplayName());
+        statusLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        statusLabel.setForeground(order.getOrderStatus() == OrderStatus.PENDING ? Color.ORANGE : Color.BLUE);
+        rightHeader.add(statusLabel);
+
+        headerPanel.add(rightHeader, BorderLayout.EAST);
+
+        card.add(headerPanel, BorderLayout.NORTH);
+
+        // Order details
+        JPanel detailsPanel = createOrderDetailsPanel(order);
+        card.add(detailsPanel, BorderLayout.CENTER);
+
+        // Action buttons (bas droite)
+        JPanel buttonContainer = new JPanel(new BorderLayout());
+        buttonContainer.setBackground(Color.WHITE);
+        buttonContainer.setOpaque(true);
+
+        JPanel buttonPanel = createOrderButtonsPanel(order);
+        buttonContainer.add(buttonPanel, BorderLayout.EAST);
+
+        card.add(buttonContainer, BorderLayout.SOUTH);
+
+        return card;
+    }
+
+    private JPanel createOrderDetailsPanel(Order order) {
+        JPanel detailsPanel = new JPanel();
+        detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
+        detailsPanel.setBackground(Color.WHITE);
+        detailsPanel.setOpaque(true);
+        detailsPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+
+        // Delivery time (if delivered)
+        if (order.getDeliveredAt() != null) {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            JLabel deliveredLabel = new JLabel("Livrée: " + order.getDeliveredAt().format(formatter));
+            deliveredLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+            detailsPanel.add(deliveredLabel);
+        }
+
+        // Client info
+        if (order.getClient() != null) {
+            String clientName = (order.getClient().getFirstName() != null ? order.getClient().getFirstName() : "") +
+                    " " + (order.getClient().getLastName() != null ? order.getClient().getLastName() : "");
+            JLabel clientLabel = new JLabel("Client: " + clientName.trim());
+            clientLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+            detailsPanel.add(clientLabel);
+
+            if (order.getClient().getClientAddress() != null) {
+                JLabel addressLabel = new JLabel("Adresse: " + order.getClient().getClientAddress());
+                addressLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+                detailsPanel.add(addressLabel);
+            }
+        }
+
+        // Driver info
+        if (order.getDriver() != null) {
+            JLabel driverLabel = new JLabel("Livreur: " + order.getDriver().getFirstName() + " " + order.getDriver().getLastName());
+            driverLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+            detailsPanel.add(driverLabel);
+        }
+
+        // Pizza details
+        try {
+            for (OrderPizza orderPizza : order.getOrderItems()) {
+                String pizzaText;
+
+                if (orderPizza.isFree()) {
+                    pizzaText = String.format("%dx %s (%s) GRATUITE - %s",
+                            orderPizza.getQuantity(),
+                            orderPizza.getPizza().getPizzaName(),
+                            orderPizza.getPizzaSize().getDisplayName(),
+                            orderPizza.getFreeReason().getDisplayName());
+
+                    JLabel pizzaLabel = new JLabel(pizzaText);
+                    pizzaLabel.setFont(new Font("Arial", Font.BOLD, 14));
+                    pizzaLabel.setForeground(new Color(0, 128, 0)); // Vert foncé
+                    detailsPanel.add(pizzaLabel);
+                } else {
+                    pizzaText = String.format("%dx %s (%s) - %.2f€",
+                            orderPizza.getQuantity(),
+                            orderPizza.getPizza().getPizzaName(),
+                            orderPizza.getPizzaSize().getDisplayName(),
+                            orderPizza.getPizzaPrice().multiply(new BigDecimal(orderPizza.getQuantity())));
+
+                    JLabel pizzaLabel = new JLabel(pizzaText);
+                    pizzaLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+                    detailsPanel.add(pizzaLabel);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error formatting order details for order #{}", order.getOrderId(), e);
+            JLabel pizzasLabel = new JLabel("Pizzas: Détails indisponibles");
+            pizzasLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+            detailsPanel.add(pizzasLabel);
+        }
+
+        // Total
+        try {
+            double total = deliveryController.calculateOrderTotal(order);
+            JLabel totalLabel = new JLabel(String.format("Total: %.2f €", total));
+            totalLabel.setFont(new Font("Arial", Font.BOLD, 14));
+            detailsPanel.add(totalLabel);
+        } catch (Exception e) {
+            log.warn("Error calculating total for order #{}", order.getOrderId(), e);
+        }
+
+        // Late indicator
+        try {
+            if (deliveryController.isLateDelivery(order)) {
+                JLabel lateLabel = new JLabel("Commande en retard");
+                lateLabel.setFont(new Font("Arial", Font.BOLD, 14));
+                lateLabel.setForeground(Color.RED);
+                detailsPanel.add(lateLabel);
+            }
+        } catch (Exception e) {
+            log.warn("Error checking delivery delay for order #{}", order.getOrderId(), e);
+        }
+
+        return detailsPanel;
+    }
+
+    private JPanel createOrderButtonsPanel(Order order) {
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.setBackground(Color.WHITE);
+        buttonPanel.setOpaque(true);
+
+        if (order.getOrderStatus() == OrderStatus.PENDING) {
+            JButton startButton = new JButton();
+            AppTheme.styleButton(startButton, "Démarrer Livraison", AppTheme.INFO_COLOR);
+            startButton.setPreferredSize(new Dimension(160, 35));
+            startButton.addActionListener(e -> updateOrderStatus(order.getOrderId(), OrderStatus.IN_PROGRESS));
+            buttonPanel.add(startButton);
+        } else if (order.getOrderStatus() == OrderStatus.IN_PROGRESS) {
+            JButton completeButton = new JButton();
+            AppTheme.styleButton(completeButton, "Terminer Livraison", AppTheme.SUCCESS_COLOR);
+            completeButton.setPreferredSize(new Dimension(160, 35));
+            completeButton.addActionListener(e -> updateOrderStatus(order.getOrderId(), OrderStatus.DELIVERED));
+            buttonPanel.add(completeButton);
+        }
+
+        return buttonPanel;
+    }
+
+    private void updateOrderStatus(Integer orderId, OrderStatus newStatus) {
+        Result<Order> result = deliveryController.updateOrderStatus(orderId, newStatus);
+
+        if (result.isSuccess()) {
+            loadOrders();
+        } else {
+            showErrorMessage("Erreur lors de la mise à jour du statut: " + String.join("\n", result.getErrors()));
+        }
+    }
+
+    private void refreshAllClientData() {
+        try {
+            Integer selectedClientId = selectedClient != null ? selectedClient.getClientId() : null;
+
+            List<Client> updatedClients = clientController.getAllClients();
+
+            clientCombo.removeAllItems();
+            Client newSelectedClient = null;
+
+            for (Client client : updatedClients) {
+                clientCombo.addItem(client);
+
+                if (client.getClientId().equals(selectedClientId)) {
+                    newSelectedClient = client;
+                }
+            }
+
+            if (newSelectedClient != null) {
+                selectedClient = newSelectedClient;
+                clientCombo.setSelectedItem(newSelectedClient);
+            } else if (clientCombo.getItemCount() > 0) {
+                selectedClient = clientCombo.getItemAt(0);
+                clientCombo.setSelectedIndex(0);
+            } else {
+                selectedClient = null;
+            }
+
+            log.info("All client data refreshed - {} clients loaded", updatedClients.size());
+            if (selectedClient != null) {
+                log.info("Selected client updated: balance={}€, loyalty={} points",
+                        selectedClient.getAmount(), selectedClient.getLoyaltyCounter());
+            }
+
+        } catch (Exception e) {
+            log.error("Error refreshing all client data", e);
+        }
+    }
+
+    // Utility methods
     private void showNoOrdersMessage(String message) {
         ordersPanel.removeAll();
         JPanel centerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
@@ -654,203 +965,27 @@ public class DeliveryPanel extends JPanel {
         ordersPanel.repaint();
     }
 
-    private JPanel createOrderCard(Order order) {
-        JPanel card = new JPanel();
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(Color.GRAY),
-            BorderFactory.createEmptyBorder(10, 10, 10, 10)
-        ));
-        card.setMaximumSize(new Dimension(500, Integer.MAX_VALUE));
-        card.setPreferredSize(new Dimension(500, 200));
-        card.setBackground(Color.WHITE);
-        card.setOpaque(true);
+    private void showErrorPanel(String errorMessage) {
+        removeAll();
+        setLayout(new BorderLayout());
+        setBackground(Color.WHITE);
 
-        // En-tête de la commande
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setBackground(Color.WHITE);
-        headerPanel.setOpaque(true);
-        
-        JPanel leftHeader = new JPanel();
-        leftHeader.setLayout(new BoxLayout(leftHeader, BoxLayout.Y_AXIS));
-        leftHeader.setBackground(Color.WHITE);
-        leftHeader.setOpaque(true);
-        
-        JLabel orderIdLabel = new JLabel("Commande #" + order.getOrderId());
-        orderIdLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        leftHeader.add(orderIdLabel);
-        
-        // Ajout de la date de création
-        if (order.getOrderDate() != null) {
-            JLabel dateLabel = new JLabel("Créée le " + order.getOrderDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
-            dateLabel.setFont(new Font("Arial", Font.PLAIN, 12));
-            dateLabel.setForeground(Color.GRAY);
-            leftHeader.add(dateLabel);
-        }
-        
-        headerPanel.add(leftHeader, BorderLayout.WEST);
+        JLabel errorLabel = new JLabel("Erreur: " + errorMessage);
+        errorLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        errorLabel.setForeground(Color.RED);
+        errorLabel.setFont(new Font("SansSerif", Font.BOLD, 16));
 
-        JLabel statusLabel = new JLabel(order.getOrderStatus().toString());
-        statusLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        statusLabel.setForeground(order.getOrderStatus() == OrderStatus.PENDING ? Color.ORANGE : Color.BLUE);
-        headerPanel.add(statusLabel, BorderLayout.EAST);
+        add(errorLabel, BorderLayout.CENTER);
+        revalidate();
+        repaint();
+    }
 
-        card.add(headerPanel);
-        card.add(Box.createVerticalStrut(10));
+    private void showErrorMessage(String message) {
+        JOptionPane.showMessageDialog(this, message, "Erreur", JOptionPane.ERROR_MESSAGE);
+    }
 
-        // Détails de la commande
-        JPanel detailsPanel = new JPanel();
-        detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
-        detailsPanel.setBackground(Color.WHITE);
-        detailsPanel.setOpaque(true);
-
-        // Client (avec vérification null)
-        if (order.getClient() != null) {
-            String clientName = (order.getClient().getFirstName() != null ? order.getClient().getFirstName() : "") + 
-                              " " + (order.getClient().getLastName() != null ? order.getClient().getLastName() : "");
-            JLabel clientLabel = new JLabel("Client: " + clientName.trim());
-            clientLabel.setFont(new Font("Arial", Font.PLAIN, 14));
-            detailsPanel.add(clientLabel);
-
-            // Adresse
-            if (order.getClient().getClientAddress() != null) {
-                JLabel addressLabel = new JLabel("Adresse: " + order.getClient().getClientAddress());
-                addressLabel.setFont(new Font("Arial", Font.PLAIN, 14));
-                detailsPanel.add(addressLabel);
-            }
-        }
-
-        // Détails des pizzas
-        try {
-            // Agréger les pizzas identiques
-            Map<String, OrderPizza> aggregatedPizzas = new HashMap<>();
-            List<OrderPizza> freePizzas = new ArrayList<>();
-
-            for (OrderPizza orderPizza : order.getOrderItems()) {
-                if (orderPizza.getIsFree()) {
-                    freePizzas.add(orderPizza);
-                } else {
-                    String key = orderPizza.getPizza().getPizzaName() + "_" + orderPizza.getPizzaSize();
-                    if (aggregatedPizzas.containsKey(key)) {
-                        OrderPizza existing = aggregatedPizzas.get(key);
-                        existing.setQuantity(existing.getQuantity() + orderPizza.getQuantity());
-                    } else {
-                        aggregatedPizzas.put(key, orderPizza);
-                    }
-                }
-            }
-
-            // Afficher les pizzas payantes
-            for (OrderPizza orderPizza : aggregatedPizzas.values()) {
-                String pizzaText = String.format("x%d %s (%s) - %.2f€",
-                    orderPizza.getQuantity(),
-                    orderPizza.getPizza().getPizzaName(),
-                    orderPizza.getPizzaSize().getDisplayName(),
-                    orderPizza.getPizzaPrice().multiply(new BigDecimal(orderPizza.getQuantity())));
-                
-                JLabel pizzaLabel = new JLabel(pizzaText);
-                pizzaLabel.setFont(new Font("Arial", Font.PLAIN, 14));
-                detailsPanel.add(pizzaLabel);
-            }
-
-            // Afficher les pizzas gratuites
-            for (OrderPizza orderPizza : freePizzas) {
-                String pizzaText = String.format("x%d %s (%s) OFFERTE 🎁",
-                    orderPizza.getQuantity(),
-                    orderPizza.getPizza().getPizzaName(),
-                    orderPizza.getPizzaSize().getDisplayName());
-                
-                JLabel pizzaLabel = new JLabel(pizzaText);
-                pizzaLabel.setFont(new Font("Arial", Font.BOLD, 14));
-                pizzaLabel.setForeground(new Color(0, 128, 0)); // Vert foncé
-                detailsPanel.add(pizzaLabel);
-            }
-
-        } catch (Exception e) {
-            log.warn("Erreur lors du formatage des détails de commande", e);
-            JLabel pizzasLabel = new JLabel("Pizzas: Détails non disponibles");
-            pizzasLabel.setFont(new Font("Arial", Font.PLAIN, 14));
-            detailsPanel.add(pizzasLabel);
-        }
-
-        // Total
-        try {
-            double total = orderService.calculateOrderTotal(order);
-            JLabel totalLabel = new JLabel(String.format("Total: %.2f €", total));
-            totalLabel.setFont(new Font("Arial", Font.BOLD, 14));
-            detailsPanel.add(totalLabel);
-
-            // Afficher le remboursement si la commande est en retard
-            if (order.getFreeReason() == FreeReason.LATE_DELIVERY) {
-                JLabel refundLabel = new JLabel("Commande remboursée (Retard de livraison)");
-                refundLabel.setFont(new Font("Arial", Font.BOLD, 14));
-                refundLabel.setForeground(new Color(0, 128, 0)); // Vert foncé
-                detailsPanel.add(refundLabel);
-            }
-        } catch (Exception e) {
-            log.warn("Erreur lors du calcul du total", e);
-            JLabel totalLabel = new JLabel("Total: Non calculable");
-            totalLabel.setFont(new Font("Arial", Font.BOLD, 14));
-            detailsPanel.add(totalLabel);
-        }
-
-        // Temps de livraison
-        try {
-            String deliveryTime = orderService.calculateDeliveryTime(order);
-            JLabel deliveryTimeLabel = new JLabel("Temps estimé: " + deliveryTime);
-            deliveryTimeLabel.setFont(new Font("Arial", Font.PLAIN, 14));
-            detailsPanel.add(deliveryTimeLabel);
-        } catch (Exception e) {
-            log.warn("Erreur lors du calcul du temps de livraison", e);
-        }
-
-        // Indicateur de retard
-        try {
-            if (orderService.isLateDelivery(order)) {
-                JLabel lateLabel = new JLabel("Commande en retard");
-                lateLabel.setFont(new Font("Arial", Font.BOLD, 14));
-                lateLabel.setForeground(Color.RED);
-                detailsPanel.add(lateLabel);
-            }
-        } catch (Exception e) {
-            log.warn("Erreur lors de la vérification du retard", e);
-        }
-
-        card.add(detailsPanel);
-
-        // Boutons d'action
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.setBackground(Color.WHITE);
-        buttonPanel.setOpaque(true);
-
-        if (order.getOrderStatus() == OrderStatus.PENDING) {
-            JButton startButton = new JButton("Démarrer la livraison");
-            startButton.addActionListener(e -> {
-                try {
-                    orderService.updateStatus(order.getOrderId(), OrderStatus.IN_PROGRESS);
-                    loadOrders();
-                } catch (Exception ex) {
-                    log.error("Erreur lors de la mise à jour du statut", ex);
-                }
-            });
-            buttonPanel.add(startButton);
-        } else if (order.getOrderStatus() == OrderStatus.IN_PROGRESS) {
-            JButton completeButton = new JButton("Terminer la livraison");
-            completeButton.addActionListener(e -> {
-                try {
-                    orderService.updateStatus(order.getOrderId(), OrderStatus.DELIVERED);
-                    loadOrders();
-                } catch (Exception ex) {
-                    log.error("Erreur lors de la mise à jour du statut", ex);
-                }
-            });
-            buttonPanel.add(completeButton);
-        }
-
-        card.add(Box.createVerticalStrut(10));
-        card.add(buttonPanel);
-
-        return card;
+    private void showSuccessMessage(String message) {
+        JOptionPane.showMessageDialog(this, message, "Succès", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private JPanel createCardPanel() {
@@ -868,19 +1003,6 @@ public class DeliveryPanel extends JPanel {
         JLabel label = new JLabel(text);
         label.setFont(new Font("SansSerif", Font.BOLD, 18));
         return label;
-    }
-
-    private JPanel createLabeledTextField(String labelText, JTextField field) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BorderLayout(5, 5));
-        panel.setOpaque(false);
-        JLabel label = new JLabel(labelText);
-        label.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        field.setPreferredSize(new Dimension(200, 30));
-        panel.add(label, BorderLayout.NORTH);
-        panel.add(field, BorderLayout.CENTER);
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
-        return panel;
     }
 
     private JPanel createLabeledCombo(String labelText, JComboBox<?> combo) {
@@ -907,5 +1029,69 @@ public class DeliveryPanel extends JPanel {
         panel.add(spinner, BorderLayout.CENTER);
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
         return panel;
+    }
+
+    private static class DriverComboRenderer extends DefaultListCellRenderer {
+        private final List<DeliveryDriver> availableDrivers;
+
+        public DriverComboRenderer(List<DeliveryDriver> availableDrivers) {
+            this.availableDrivers = availableDrivers;
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+
+            if (value instanceof DeliveryDriver driver) {
+                boolean isAvailable = availableDrivers.stream()
+                        .anyMatch(d -> d.getDriverId().equals(driver.getDriverId()));
+
+                String driverName = driver.getFirstName() + " " + driver.getLastName();
+
+                if (isAvailable) {
+                    setText(driverName + " (Disponible)");
+                    setForeground(isSelected ? Color.WHITE : new Color(0, 120, 0)); // Vert foncé
+                } else {
+                    setText(driverName + " (En livraison)");
+                    setForeground(isSelected ? Color.WHITE : new Color(255, 140, 0)); // Orange
+                    setFont(getFont().deriveFont(Font.ITALIC));
+                }
+            }
+
+            return this;
+        }
+    }
+
+    private static class VehicleComboRenderer extends DefaultListCellRenderer {
+        private final List<Vehicle> availableVehicles;
+
+        public VehicleComboRenderer(List<Vehicle> availableVehicles) {
+            this.availableVehicles = availableVehicles;
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+
+            if (value instanceof Vehicle vehicle) {
+                boolean isAvailable = availableVehicles.stream()
+                        .anyMatch(v -> v.getVehicleId().equals(vehicle.getVehicleId()));
+
+                String vehicleInfo = vehicle.getVehicleType().getDisplayName() + " (" + vehicle.getLicensePlate() + ")";
+
+                if (isAvailable) {
+                    setText(vehicleInfo + " (Disponible)");
+                    setForeground(isSelected ? Color.WHITE : new Color(0, 120, 0)); // Vert foncé
+                } else {
+                    setText(vehicleInfo + " (En cours d'utilisation)");
+                    setForeground(isSelected ? Color.WHITE : new Color(255, 140, 0)); // Orange
+                    setFont(getFont().deriveFont(Font.ITALIC)); // Italique
+                }
+            }
+
+            return this;
+        }
     }
 }

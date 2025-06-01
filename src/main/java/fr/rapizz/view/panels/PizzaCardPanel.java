@@ -1,5 +1,6 @@
 package fr.rapizz.view.panels;
 
+import fr.rapizz.controller.MenuController;
 import fr.rapizz.model.Ingredient;
 import fr.rapizz.model.Pizza;
 import fr.rapizz.model.PizzaSize;
@@ -13,16 +14,16 @@ import java.util.Set;
 
 public class PizzaCardPanel extends JPanel {
     private final Pizza pizza;
-    private final PizzaService pizzaService;
+    private final MenuController menuController;
 
     private static final Color BACKGROUND_COLOR = Color.WHITE;
     private static final Color TITLE_COLOR = new Color(33, 33, 33);
     private static final Color INGREDIENT_BG_COLOR = new Color(240, 240, 240);
     private static final Color PRICE_BG_COLOR = new Color(245, 245, 245);
 
-    public PizzaCardPanel(Pizza pizza, PizzaService pizzaService) {
+    public PizzaCardPanel(Pizza pizza, MenuController menuController) {
         this.pizza = pizza;
-        this.pizzaService = pizzaService;
+        this.menuController = menuController;
 
         // Configuration
         setLayout(new BorderLayout());
@@ -115,9 +116,9 @@ public class PizzaCardPanel extends JPanel {
         sizesPanel.setOpaque(false);
         sizesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        sizesPanel.add(createSizePrice("Naine", pizzaService.calculatePrice(pizza, PizzaSize.NAINE)));
-        sizesPanel.add(createSizePrice("Humaine", pizzaService.calculatePrice(pizza, PizzaSize.HUMAINE)));
-        sizesPanel.add(createSizePrice("Ogresse", pizzaService.calculatePrice(pizza, PizzaSize.OGRESSE)));
+        sizesPanel.add(createSizePrice("Naine", menuController.calculatePrice(pizza, PizzaSize.NAINE)));
+        sizesPanel.add(createSizePrice("Humaine", menuController.calculatePrice(pizza, PizzaSize.HUMAINE)));
+        sizesPanel.add(createSizePrice("Ogresse", menuController.calculatePrice(pizza, PizzaSize.OGRESSE)));
 
         panel.add(sizesPanel);
         return panel;

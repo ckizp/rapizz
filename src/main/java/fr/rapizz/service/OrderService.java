@@ -7,6 +7,7 @@ import fr.rapizz.model.FreeReason;
  import fr.rapizz.model.Client;
 import fr.rapizz.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -21,223 +23,137 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import java.math.BigDecimal;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderService {
     private final OrderRepository repository;
     private final ClientService clientService;
-    private static final int DELIVERY_TIME_THRESHOLD_MINUTES = 45;
-    private static final int LOYALTY_THRESHOLD = 10;
-    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+    private static final int PROMISED_DELIVERY_TIME_MINUTES = 30;
 
     public List<Order> findAll() {
-        return repository.findAll();
+        return repository.findAllWithDetails();
+    }
+
+    public List<Order> findByStatus(OrderStatus status) {
+        return repository.findByOrderStatusWithDetails(status);
+    }
+
+    public List<Order> findActiveOrders() {
+        return repository.findActiveOrdersWithDetails();
     }
 
     public Optional<Order> findById(Integer id) {
         return repository.findById(id);
     }
 
-    public List<Order> findByClientId(Integer clientId) {
-        return repository.findByClient_ClientId(clientId);
-    }
-
-    public List<Order> findByDriverId(Integer driverId) {
-        return repository.findByDriver_driverId(driverId);
-    }
-
-    public List<Order> findByStatus(OrderStatus status) {
-        return repository.findByOrderStatus(status);
-    }
-
-    public List<Order> findByDateRange(LocalDateTime start, LocalDateTime end) {
-        return repository.findByOrderDateBetween(start, end);
-    }
-
-    public List<Order> findActiveOrders() {
-        List<Order> pendingOrders = repository.findByOrderStatusWithDetails(OrderStatus.PENDING);
-        List<Order> inProgressOrders = repository.findByOrderStatusWithDetails(OrderStatus.IN_PROGRESS);
-        pendingOrders.addAll(inProgressOrders);
-        return pendingOrders;
-    }
-
-    public String calculateDeliveryTime(Order order) {
-        // Logique de calcul du temps de livraison
-        // On pourrait prendre en compte :
-        // - La distance
-        // - Le type de véhicule
-        // - Le trafic
-        // - L'heure de la journée
-        // Pour l'instant, on retourne une valeur fixe
-        return "30 minutes";
-    }
-
     public boolean isLateDelivery(Order order) {
-        return Duration.between(order.getOrderDate(), LocalDateTime.now())
-                .toMinutes() > DELIVERY_TIME_THRESHOLD_MINUTES;
-    }
-
-    public String formatOrderDetails(Order order) {
-        return order.getOrderItems().stream()
-                .map(item -> item.getPizza().getPizzaName() + " - " + item.getPizzaSize())
-                .collect(Collectors.joining(", "));
+        if (order.getOrderStatus() == OrderStatus.DELIVERED && order.getDeliveredAt() != null) {
+            long actualMinutes = Duration.between(order.getOrderDate(), order.getDeliveredAt()).toMinutes();
+            return actualMinutes > PROMISED_DELIVERY_TIME_MINUTES;
+        } else if (order.getOrderStatus() == OrderStatus.IN_PROGRESS || order.getOrderStatus() == OrderStatus.PENDING) {
+            long elapsedMinutes = Duration.between(order.getOrderDate(), LocalDateTime.now()).toMinutes();
+            return elapsedMinutes > PROMISED_DELIVERY_TIME_MINUTES;
+        }
+        return false;
     }
 
     public double calculateOrderTotal(Order order) {
         return order.getOrderItems().stream()
-                .mapToDouble(item -> item.getPizzaPrice().doubleValue() * item.getQuantity())
+                .mapToDouble(item -> {
+                    if (item.isFree()) {
+                        return 0.0;
+                    }
+                    return item.getPizzaPrice().doubleValue() * item.getQuantity();
+                })
                 .sum();
+    }
+
+    public Set<Integer> getOccupiedDriverIds() {
+        return findByStatus(OrderStatus.IN_PROGRESS).stream()
+                .filter(order -> order.getDriver() != null)
+                .map(order -> order.getDriver().getDriverId())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<Integer> getOccupiedVehicleIds() {
+        return findByStatus(OrderStatus.IN_PROGRESS).stream()
+                .filter(order -> order.getVehicle() != null)
+                .map(order -> order.getVehicle().getVehicleId())
+                .collect(Collectors.toSet());
     }
 
     @Transactional
     public Order save(Order order) {
-        log.info("Début de la sauvegarde de la commande avec {} pizzas", order.getOrderItems().size());
-        log.info("Détails des pizzas avant sauvegarde:");
-        for (OrderPizza pizza : order.getOrderItems()) {
-            log.info("- {} (taille: {}, quantité: {}, prix: {})", 
-                pizza.getPizza().getPizzaName(),
-                pizza.getPizzaSize(),
-                pizza.getQuantity(),
-                pizza.getPizzaPrice());
-        }
-
-        if (order.getClient() != null) {
-            // Calculer le nombre total de pizzas dans la commande
-            int totalPizzas = order.getOrderItems().stream()
-                .mapToInt(OrderPizza::getQuantity)
-                .sum();
-            
-            // Incrémenter le compteur de fidélité du nombre total de pizzas
-            clientService.incrementLoyaltyCounter(order.getClient(), totalPizzas);
-            
-            // Récupérer le client mis à jour pour vérifier le nouveau compteur
-            Client updatedClient = clientService.findById(order.getClient().getClientId()).orElseThrow();
-            
-            // Vérifier si le client a atteint ou dépassé le seuil de fidélité
-            if (updatedClient.getLoyaltyCounter() >= LOYALTY_THRESHOLD) {
-                log.info("Client {} a atteint le seuil de fidélité ({} points)", 
-                    updatedClient.getClientId(), 
-                    updatedClient.getLoyaltyCounter());
-                
-                // Marquer la commande comme gratuite pour fidélité
-                order.setFreeReason(FreeReason.LOYALTY);
-                
-                // Trouver la pizza la moins chère
-                OrderPizza cheapestPizza = order.getOrderItems().stream()
-                    .min((p1, p2) -> p1.getPizzaPrice().compareTo(p2.getPizzaPrice()))
-                    .orElseThrow();
-                
-                // Si la pizza la moins chère a une quantité > 1
-                if (cheapestPizza.getQuantity() > 1) {
-                    // Créer une nouvelle entrée pour la pizza gratuite
-                    OrderPizza freePizza = new OrderPizza();
-                    freePizza.setOrder(order);
-                    freePizza.setPizza(cheapestPizza.getPizza());
-                    freePizza.setPizzaSize(cheapestPizza.getPizzaSize());
-                    freePizza.setQuantity(1);
-                    freePizza.setPizzaPrice(java.math.BigDecimal.ZERO);
-                    freePizza.setIsFree(true);
-                    order.addOrderItem(freePizza);
-                    
-                    // Décrémenter la quantité de la pizza originale
-                    cheapestPizza.setQuantity(cheapestPizza.getQuantity() - 1);
-                } else {
-                    // Si quantité = 1, mettre simplement à jour la pizza existante
-                    cheapestPizza.setPizzaPrice(java.math.BigDecimal.ZERO);
-                    cheapestPizza.setIsFree(true);
-                }
-                
-                // Réinitialiser le compteur de fidélité
-                clientService.resetLoyaltyCounter(updatedClient);
-                
-                log.info("Pizza gratuite : {} (taille: {}, quantité: 1)", 
-                    cheapestPizza.getPizza().getPizzaName(),
-                    cheapestPizza.getPizzaSize());
-            }
-        }
-
+        log.info("Starting order save process with {} items", order.getOrderItems().size());
         Order savedOrder = repository.save(order);
-        
-        log.info("Commande sauvegardée avec l'ID {} et {} pizzas", 
-            savedOrder.getOrderId(), savedOrder.getOrderItems().size());
-        log.info("Détails des pizzas après sauvegarde:");
-        for (OrderPizza pizza : savedOrder.getOrderItems()) {
-            log.info("- {} (taille: {}, quantité: {}, prix: {}, gratuite: {})", 
-                pizza.getPizza().getPizzaName(),
-                pizza.getPizzaSize(),
-                pizza.getQuantity(),
-                pizza.getPizzaPrice(),
-                pizza.getIsFree());
-        }
-        
+        log.info("Order saved successfully with ID {} and {} items",
+                savedOrder.getOrderId(), savedOrder.getOrderItems().size());
         return savedOrder;
     }
 
     @Transactional
     public Order updateStatus(Integer orderId, OrderStatus newStatus) {
         Order order = repository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Commande non trouvée"));
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        OrderStatus oldStatus = order.getOrderStatus();
         order.setOrderStatus(newStatus);
-        return repository.save(order);
-    }
 
-    @Transactional
-    public Order updateRating(Integer orderId, Integer rating) {
-        if (rating < 0 || rating > 5) {
-            throw new IllegalArgumentException("La note doit être comprise entre 0 et 5");
-        }
-        Order order = repository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Commande non trouvée"));
-        order.setClientRating(rating);
-        return repository.save(order);
-    }
+        if (newStatus == OrderStatus.DELIVERED && oldStatus != OrderStatus.DELIVERED) {
+            order.setDeliveredAt(LocalDateTime.now());
+            log.info("Order #{} marked as delivered at {}", orderId, order.getDeliveredAt());
 
-    @Transactional
-    public void delete(Integer id) {
-        repository.deleteById(id);
-    }
-
-    @Scheduled(fixedRate = 60000) // Vérifie toutes les minutes
-    @Transactional
-    public void checkLateOrders() {
-        log.info("=== Début de la vérification des commandes en retard ===");
-        List<Order> activeOrders = findActiveOrders();
-        log.info("Nombre de commandes actives trouvées : {}", activeOrders.size());
-        
-        for (Order order : activeOrders) {
-            log.debug("Vérification de la commande #{} - Statut: {}, Date: {}, FreeReason: {}", 
-                order.getOrderId(),
-                order.getOrderStatus(),
-                order.getOrderDate(),
-                order.getFreeReason());
-            
-            if (isLateDelivery(order) && order.getFreeReason() != FreeReason.LATE_DELIVERY) {
-                log.info("🚨 Commande #{} en retard - Délai dépassé de {} minutes", 
-                    order.getOrderId(),
-                    Duration.between(order.getOrderDate(), LocalDateTime.now()).toMinutes() - DELIVERY_TIME_THRESHOLD_MINUTES);
-                
-                // Marquer la commande comme remboursée
-                order.setFreeReason(FreeReason.LATE_DELIVERY);
-                repository.save(order);
-                log.info("✅ Commande #{} marquée comme remboursée (LATE_DELIVERY)", order.getOrderId());
-                
-                // Rembourser le client
-                Client client = order.getClient();
-                BigDecimal totalAmount = BigDecimal.valueOf(calculateOrderTotal(order));
-                BigDecimal newAmount = client.getAmount().add(totalAmount).setScale(2, BigDecimal.ROUND_HALF_UP);
-                clientService.updateAmount(client.getClientId(), newAmount);
-                
-                log.info("💰 Client #{} remboursé de {}€ - Nouveau solde: {}€", 
-                    client.getClientId(), 
-                    totalAmount.doubleValue(),
-                    newAmount.doubleValue());
-            } else if (isLateDelivery(order)) {
-                log.debug("Commande #{} en retard mais déjà remboursée (FreeReason: {})", 
-                    order.getOrderId(), 
-                    order.getFreeReason());
+            if (isLateDelivery(order) && !order.hasLateDeliveryCompensation()) {
+                log.info("Order #{} was delivered late - applying automatic refund", orderId);
+                processLateDeliveryRefund(order);
             }
         }
-        log.info("=== Fin de la vérification des commandes en retard ===");
+
+        return repository.save(order);
+    }
+
+    @Transactional
+    public void processLateDeliveryRefund(Order order) {
+        BigDecimal refundAmount = order.getOrderItems().stream()
+                .filter(item -> item.getFreeReason() == FreeReason.NOT_FREE)
+                .map(item -> item.getPizzaPrice().multiply(new BigDecimal(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+            for (OrderPizza orderPizza : order.getOrderItems()) {
+                if (orderPizza.getFreeReason() == FreeReason.NOT_FREE) {
+                    orderPizza.setFreeReason(FreeReason.LATE_DELIVERY);
+                    log.info("Pizza #{} marked as late delivery compensation: {} ({})",
+                            orderPizza.getOrderItemId(),
+                            orderPizza.getPizza().getPizzaName(),
+                            orderPizza.getPizzaSize().getDisplayName());
+                }
+            }
+
+            Client client = order.getClient();
+            BigDecimal newAmount = client.getAmount().add(refundAmount);
+            clientService.updateAmount(client.getClientId(), newAmount);
+
+            log.info("Client #{} refunded {}€ for late delivery. New balance: {}€",
+                    client.getClientId(), refundAmount.doubleValue(), newAmount.doubleValue());
+        }
+    }
+
+    @Scheduled(fixedRate = 60000)
+    @Transactional
+    public void checkForLateDeliveries() {
+        List<Order> inProgressOrders = findByStatus(OrderStatus.IN_PROGRESS);
+
+        for (Order order : inProgressOrders) {
+            if (isLateDelivery(order) && !order.hasLateDeliveryCompensation()) {
+                log.info("Order #{} is late and not yet compensated - processing automatic refund", order.getOrderId());
+                processLateDeliveryRefund(order);
+
+                repository.save(order);
+            }
+        }
     }
 } 
